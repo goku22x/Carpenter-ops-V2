@@ -17,6 +17,7 @@ type Props = {
 export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment }: Props) {
   const supabase = createClient();
   const [view, setView] = useState<"jobs" | "equipment" | "active" | "operations">("jobs");
+  const [equipment, setEquipment] = useState<Equipment[]>(initialEquipment);
   const [loggingOut, setLoggingOut] = useState(false);
 
   async function handleLogout() {
@@ -29,6 +30,18 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       alert(error instanceof Error ? error.message : "Logout failed.");
       setLoggingOut(false);
     }
+  }
+
+  async function refreshEquipment() {
+    const res = await fetch("/api/equipment", { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Could not refresh equipment.");
+    }
+
+    setEquipment(data);
+    return data as Equipment[];
   }
 
   return (
@@ -60,11 +73,18 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       ) : null}
 
       {view === "equipment" ? (
-        <EquipmentModule initialEquipment={initialEquipment} jobs={initialJobs} isAdmin={profile.role === "admin"} />
+        <EquipmentModule
+          equipment={equipment}
+          jobs={initialJobs}
+          isAdmin={profile.role === "admin"}
+          onEquipmentChanged={async () => {
+            await refreshEquipment();
+          }}
+        />
       ) : null}
 
       {view === "operations" ? (
-        <EquipmentBoard equipment={initialEquipment} jobs={initialJobs} />
+        <EquipmentBoard equipment={equipment} jobs={initialJobs} />
       ) : null}
 
       {view === "active" ? (
