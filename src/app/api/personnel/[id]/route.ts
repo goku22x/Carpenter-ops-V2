@@ -46,3 +46,23 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   return NextResponse.json(data);
 }
+
+export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  const supabase = await createClient();
+  const profile = await getProfile(supabase);
+
+  if (!profile || profile.role !== "admin") {
+    return NextResponse.json({ error: "Admin only." }, { status: 403 });
+  }
+
+  const { error } = await supabase
+    .from("personnel")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  return NextResponse.json({ ok: true });
+}
