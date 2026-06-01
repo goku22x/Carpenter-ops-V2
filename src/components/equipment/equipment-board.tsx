@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import type { Equipment, Job, Personnel, Profile, WorkOrder } from "@/lib/types";
-import { equipmentTypeStyle } from "@/lib/equipment-types";
+import { equipmentStatusDot, equipmentTypeStyle } from "@/lib/equipment-types";
 import { phaseColorClass } from "@/lib/phases";
-import { formatDate, formatDateRange } from "@/lib/date-format";
+import { formatDate } from "@/lib/date-format";
 import { getWorkOrderTypeColor } from "@/lib/work-orders";
 
 type Props = {
@@ -21,14 +21,7 @@ type PersonnelWithJob = Personnel & {
   assigned_job_id?: string | null;
 };
 
-const QUICK_REQUESTS = [
-  "Survey",
-  "Maintenance",
-  "Mobilization",
-  "Trucking",
-  "Foreman Assignment",
-  "Office"
-] as const;
+const QUICK_REQUESTS = ["Survey", "Maintenance", "Mobilization", "Trucking", "Foreman Assignment", "Office"] as const;
 
 function imagePath(value: string | null | undefined) {
   if (!value) return "";
@@ -40,22 +33,16 @@ function imagePath(value: string | null | undefined) {
 function normalizeUrl(value: string | null | undefined) {
   const trimmed = (value ?? "").trim();
   if (!trimmed) return "";
-
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    return trimmed;
-  }
-
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
   return `https://${trimmed}`;
 }
 
 function openUrl(value: string | null | undefined) {
   const url = normalizeUrl(value);
-
   if (!url) {
     alert("No project files link has been added for this job yet.");
     return;
   }
-
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
@@ -86,36 +73,14 @@ function getCurrentPerson(profile: Profile | undefined, personnel: PersonnelWith
 }
 
 function getDefaultRequestDescription(type: string) {
-  switch (type) {
-    case "Survey":
-      return "Survey request created from Operations Board.";
-    case "Maintenance":
-      return "Maintenance request created from Operations Board.";
-    case "Mobilization":
-      return "Mobilization request created from Operations Board.";
-    case "Trucking":
-      return "Trucking request created from Operations Board.";
-    case "Foreman Assignment":
-      return "Foreman assignment request created from Operations Board.";
-    case "Office":
-      return "Office request created from Operations Board.";
-    default:
-      return "Request created from Operations Board.";
-  }
+  return `${type} request created from Operations Board.`;
 }
 
 function EquipmentCard({ item }: { item: Equipment }) {
   const style = equipmentTypeStyle(item.equipment_type, item.ownership_type);
 
-  const statusClass =
-    item.status === "Down" || item.status === "In Shop"
-      ? "ring-2 ring-red-400"
-      : item.status === "Transporting"
-        ? "ring-2 ring-yellow-400"
-        : "";
-
   return (
-    <div className={`flex gap-3 rounded-2xl border p-3 shadow-sm ${style.cardClass} ${statusClass}`}>
+    <div className={`flex gap-3 rounded-2xl border border-l-4 p-3 shadow-sm ${style.cardClass} ${style.accentClass}`}>
       <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl border bg-white">
         {item.photo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -125,15 +90,19 @@ function EquipmentCard({ item }: { item: Equipment }) {
         )}
       </div>
 
-      <div className="min-w-0">
-        <div className="font-black leading-tight">{item.name}</div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="font-black leading-tight">{item.name}</div>
+          <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${equipmentStatusDot(item.status)}`} title={item.status} />
+        </div>
+
         <div className="text-xs text-slate-500">#{item.equipment_number ?? "—"}</div>
 
-        <div className={`mt-1 inline-block rounded-full px-2 py-1 text-[10px] font-black uppercase ${style.badgeClass}`}>
+        <div className={`mt-1 inline-block rounded-full border px-2 py-1 text-[10px] font-black uppercase ${style.badgeClass}`}>
           {item.ownership_type === "Rental" ? "Rental" : item.equipment_type ?? "Other"}
         </div>
 
-        <div className="mt-1 text-xs font-black uppercase">{item.status}</div>
+        <div className="mt-1 text-xs font-black uppercase text-slate-600">{item.status}</div>
 
         {item.ownership_type === "Rental" && item.rental_company ? (
           <div className="text-xs font-bold text-pink-800">{item.rental_company}</div>
@@ -153,19 +122,13 @@ function CountBadge({ label, count, warn = false }: { label: string; count: numb
 }
 
 function EmptyBox({ text }: { text: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed bg-slate-50 p-4 text-sm font-bold text-slate-500">
-      {text}
-    </div>
-  );
+  return <div className="rounded-2xl border border-dashed bg-slate-50 p-4 text-sm font-bold text-slate-500">{text}</div>;
 }
 
 function PhaseMiniCalendar({ phases }: { phases: NonNullable<Job["job_phases"]> }) {
   const sorted = [...phases].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
-  if (sorted.length === 0) {
-    return <p className="mt-2 text-sm text-slate-500">No phases set up.</p>;
-  }
+  if (sorted.length === 0) return <p className="mt-2 text-sm text-slate-500">No phases set up.</p>;
 
   return (
     <div className="mt-2 space-y-2">
@@ -179,7 +142,6 @@ function PhaseMiniCalendar({ phases }: { phases: NonNullable<Job["job_phases"]> 
                 <span className={`h-3 w-3 shrink-0 rounded-full ${phaseColorClass(index)}`} />
                 <div className="truncate text-sm font-black">{phase.name || phase.phase}</div>
               </div>
-
               <div className="text-sm font-black">{percent}%</div>
             </div>
 
@@ -214,14 +176,11 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [quickSaving, setQuickSaving] = useState(false);
 
   const activeJobs = jobs.filter((job) => job.active !== false);
-
   const assignedJobIds = new Set<string>();
 
   if (currentPerson) {
     for (const order of workOrders) {
-      if (order.assigned_personnel_id === currentPerson.id && order.job_id && isOpenWorkOrder(order)) {
-        assignedJobIds.add(order.job_id);
-      }
+      if (order.assigned_personnel_id === currentPerson.id && order.job_id && isOpenWorkOrder(order)) assignedJobIds.add(order.job_id);
     }
 
     for (const person of personnelWithJob) {
@@ -240,9 +199,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       .map((job) => {
         const assignedEquipment = equipment.filter((item) => item.current_job_id === job.id);
         const assignedPersonnel = personnelWithJob.filter(
-          (person) =>
-            person.active !== false &&
-            (person.current_job_id === job.id || person.assigned_job_id === job.id)
+          (person) => person.active !== false && (person.current_job_id === job.id || person.assigned_job_id === job.id)
         );
         const jobWorkOrders = workOrders.filter((order) => order.job_id === job.id);
         const openWorkOrders = jobWorkOrders.filter(isOpenWorkOrder);
@@ -254,16 +211,11 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
           job,
           assignedEquipment,
           assignedPersonnel,
-          jobWorkOrders,
           openWorkOrders,
           importantOpenOrders,
           sortedPhases,
           assignedToMe,
-          sortScore:
-            (assignedToMe ? 10000 : 0) +
-            importantOpenOrders.length * 100 +
-            openWorkOrders.length * 10 +
-            assignedEquipment.length
+          sortScore: (assignedToMe ? 10000 : 0) + importantOpenOrders.length * 100 + openWorkOrders.length * 10 + assignedEquipment.length
         };
       })
       .sort((a, b) => b.sortScore - a.sortScore || a.job.name.localeCompare(b.job.name));
@@ -271,7 +223,6 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
 
   async function createQuickRequest(jobId: string, type: string) {
     const description = quickRequestNote.trim() || getDefaultRequestDescription(type);
-
     setQuickSaving(true);
 
     try {
@@ -312,43 +263,25 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       <div className="card">
         <h2 className="text-2xl font-black">Operations Board</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Home screen for daily operations. Your assigned/important jobs float to the top. Expand a job for files, phase calendar, and quick requests.
+          Home screen for daily operations. Equipment cards are subtle; the small status dot shows active/down/transporting state.
         </p>
-
-        {currentPerson ? (
-          <p className="mt-2 text-sm font-bold text-slate-700">
-            Showing priority for {currentPerson.full_name}
-          </p>
-        ) : null}
       </div>
 
       <div className="grid gap-4">
         {boardRows.map(({ job, assignedEquipment, assignedPersonnel, openWorkOrders, importantOpenOrders, sortedPhases, assignedToMe }) => {
           const expanded = expandedJobId === job.id;
-          const foreman =
-            assignedPersonnel.find((person) => person.position?.toLowerCase().includes("foreman")) ??
-            assignedPersonnel[0];
+          const foreman = assignedPersonnel.find((person) => person.position?.toLowerCase().includes("foreman")) ?? assignedPersonnel[0];
 
           return (
-            <section
-              key={job.id}
-              className={`rounded-3xl border-l-8 bg-white p-4 shadow-sm ${assignedToMe ? "border-blue-600 ring-2 ring-blue-200" : "border-carpenter-red"}`}
-            >
+            <section key={job.id} className={`rounded-3xl border-l-8 bg-white p-4 shadow-sm ${assignedToMe ? "border-blue-600 ring-2 ring-blue-200" : "border-carpenter-red"}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <button className="text-left" onClick={() => setExpandedJobId(expanded ? null : job.id)}>
                   <div className="flex items-center gap-2">
                     <span className="text-xl font-black">{expanded ? "▲" : "▼"}</span>
                     <h3 className="text-2xl font-black uppercase">{job.name}</h3>
-                    {assignedToMe ? (
-                      <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-black uppercase text-blue-800">
-                        My Job
-                      </span>
-                    ) : null}
+                    {assignedToMe ? <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-black uppercase text-blue-800">My Job</span> : null}
                   </div>
-
-                  <p className="mt-1 text-sm font-bold text-slate-500">
-                    {foreman ? `Foreman: ${foreman.full_name}` : "Foreman: not assigned"}
-                  </p>
+                  <p className="mt-1 text-sm font-bold text-slate-500">{foreman ? `Foreman: ${foreman.full_name}` : "Foreman: not assigned"}</p>
                 </button>
 
                 <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
@@ -364,9 +297,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                   <EmptyBox text="No equipment assigned to this job." />
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {assignedEquipment.map((item) => (
-                      <EquipmentCard key={item.id} item={item} />
-                    ))}
+                    {assignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
                   </div>
                 )}
               </div>
@@ -374,10 +305,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               {expanded ? (
                 <div className="mt-4 grid gap-4 border-t pt-4">
                   <div className="flex flex-wrap gap-2">
-                    <button className="btn-primary" onClick={() => openUrl(job.dropbox_url)}>
-                      Open Project Files
-                    </button>
-
+                    <button className="btn-primary" onClick={() => openUrl(job.dropbox_url)}>Open Project Files</button>
                     {QUICK_REQUESTS.map((type) => (
                       <button
                         key={type}
@@ -396,25 +324,13 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                   {quickRequestJobId === job.id ? (
                     <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3">
                       <h4 className="font-black">Create {quickRequestType} Request</h4>
-                      <p className="mt-1 text-xs font-bold text-slate-600">
-                        Quick request from Operations Board. You can add details now or edit it later in Work Orders.
-                      </p>
-
                       <label className="label">Notes</label>
-                      <textarea
-                        className="input min-h-20 bg-white"
-                        placeholder="What needs done?"
-                        value={quickRequestNote}
-                        onChange={(event) => setQuickRequestNote(event.target.value)}
-                      />
-
+                      <textarea className="input min-h-20 bg-white" placeholder="What needs done?" value={quickRequestNote} onChange={(event) => setQuickRequestNote(event.target.value)} />
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button className="btn-primary" disabled={quickSaving} onClick={() => createQuickRequest(job.id, quickRequestType)}>
                           {quickSaving ? "Creating..." : "Create Request"}
                         </button>
-                        <button className="btn-secondary" disabled={quickSaving} onClick={() => setQuickRequestJobId(null)}>
-                          Cancel
-                        </button>
+                        <button className="btn-secondary" disabled={quickSaving} onClick={() => setQuickRequestJobId(null)}>Cancel</button>
                       </div>
                     </div>
                   ) : null}
@@ -439,9 +355,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     <div className="rounded-2xl border bg-white p-3">
                       <h4 className="font-black">Personnel ({assignedPersonnel.length})</h4>
                       {assignedPersonnel.length === 0 ? (
-                        <p className="mt-2 text-sm text-slate-500">
-                          Personnel job assignment is not fully set up yet.
-                        </p>
+                        <p className="mt-2 text-sm text-slate-500">Personnel job assignment is not fully set up yet.</p>
                       ) : (
                         <div className="mt-2 space-y-2">
                           {assignedPersonnel.map((person) => (
@@ -463,30 +377,21 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                           {openWorkOrders.slice(0, 6).map((order) => (
                             <div key={order.id} className="rounded-xl bg-slate-50 p-2 text-sm">
                               <div className="flex items-center justify-between gap-2">
-                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getWorkOrderTypeColor(order.work_type)}`}>
-                                  {order.work_type}
-                                </span>
+                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getWorkOrderTypeColor(order.work_type)}`}>{order.work_type}</span>
                                 <span className="text-[10px] font-black uppercase">{order.status}</span>
                               </div>
                               <div className="mt-1 font-black">{order.title}</div>
                               <div className="text-xs text-slate-500">{order.description || "No description"}</div>
                             </div>
                           ))}
-
-                          {openWorkOrders.length > 6 ? (
-                            <div className="text-xs font-black text-slate-500">
-                              +{openWorkOrders.length - 6} more open requests
-                            </div>
-                          ) : null}
+                          {openWorkOrders.length > 6 ? <div className="text-xs font-black text-slate-500">+{openWorkOrders.length - 6} more open requests</div> : null}
                         </div>
                       )}
                     </div>
 
                     <div className="rounded-2xl border bg-white p-3">
                       <h4 className="font-black">Notes</h4>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
-                        {job.notes || "No job notes."}
-                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{job.notes || "No job notes."}</p>
                     </div>
                   </div>
                 </div>
@@ -499,9 +404,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
           <div className="mb-3 flex items-center justify-between gap-3 border-b pb-3">
             <div>
               <h3 className="text-2xl font-black uppercase">Unassigned / Yard / Other</h3>
-              <p className="text-sm text-slate-500">
-                {unassignedEquipment.length} equipment not assigned to a job • {unassignedOpenOrders.length} open requests without a job
-              </p>
+              <p className="text-sm text-slate-500">{unassignedEquipment.length} equipment not assigned to a job • {unassignedOpenOrders.length} open requests without a job</p>
             </div>
           </div>
 
@@ -509,9 +412,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <EmptyBox text="No unassigned equipment." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {unassignedEquipment.map((item) => (
-                <EquipmentCard key={item.id} item={item} />
-              ))}
+              {unassignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
             </div>
           )}
         </section>
