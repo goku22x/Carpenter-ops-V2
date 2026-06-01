@@ -21,6 +21,8 @@ type PersonnelWithJob = Personnel & {
   assigned_job_id?: string | null;
 };
 
+type PhaseLike = NonNullable<Job["job_phases"]>[number];
+
 const QUICK_REQUESTS = ["Survey", "Maintenance", "Mobilization", "Trucking", "Foreman Assignment", "Office"] as const;
 
 function imagePath(value: string | null | undefined) {
@@ -76,6 +78,48 @@ function getDefaultRequestDescription(type: string) {
   return `${type} request created from Operations Board.`;
 }
 
+function parseDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function daysBetween(start: Date, end: Date) {
+  const dayMs = 1000 * 60 * 60 * 24;
+  return Math.round((end.getTime() - start.getTime()) / dayMs);
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function monthLabel(date: Date) {
+  return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+}
+
+function buildMonthMarkers(start: Date, end: Date) {
+  const markers: { label: string; left: number }[] = [];
+  const totalDays = Math.max(1, daysBetween(start, end));
+
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  if (cursor < start) cursor.setMonth(cursor.getMonth() + 1);
+
+  while (cursor <= end) {
+    const left = Math.max(0, Math.min(100, (daysBetween(start, cursor) / totalDays) * 100));
+    markers.push({ label: monthLabel(cursor), left });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  if (markers.length === 0) {
+    markers.push({ label: monthLabel(start), left: 0 });
+  }
+
+  return markers;
+}
+
 function EquipmentCard({ item }: { item: Equipment }) {
   const style = equipmentTypeStyle(item.equipment_type, item.ownership_type);
 
@@ -125,7 +169,7 @@ function EmptyBox({ text }: { text: string }) {
   return <div className="rounded-2xl border border-dashed bg-slate-50 p-4 text-sm font-bold text-slate-500">{text}</div>;
 }
 
-function PhaseMiniCalendar({ phases }: { phases: NonNullable<Job["job_phases"]> }) {
+function PhaseList({ phases }: { phases: PhaseLike[] }) {
   const sorted = [...phases].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   if (sorted.length === 0) return <p className="mt-2 text-sm text-slate-500">No phases set up.</p>;
@@ -162,6 +206,103 @@ function PhaseMiniCalendar({ phases }: { phases: NonNullable<Job["job_phases"]> 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function PhaseVisualCalendar({ phases }: { phases: PhaseLike[] }) {
+  const sorted = [...phases].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const datedPhases = sorted
+    .map((phase, index) => ({
+      phase,
+      index,
+      start: parseDate(phase.start_date),
+      end: parseDate(phase.end_date)
+    }))
+    .filter((item): item is { phase: PhaseLike; index: number; start: Date; end: Date } => Boolean(item.start && item.end));
+
+  if (datedPhases.length === 0) {
+    return <EmptyBox text="Add phase start/end dates to show the visual schedule." />;
+  }
+
+  const minStart = new Date(Math.min(...datedPhases.map((item) => item.start.getTime())));
+  const maxEnd = new Date(Math.max(...datedPhases.map((item) => item.end.getTime())));
+  const scheduleStart = addDays(minStart, -7);
+  const scheduleEnd = addDays(maxEnd, 7);
+  const totalDays = Math.max(1, daysBetween(scheduleStart, scheduleEnd));
+  const markers = buildMonthMarkers(scheduleStart, scheduleEnd);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const todayInRange = today >= scheduleStart && today <= scheduleEnd;
+  const todayLeft = todayInRange ? (daysBetween(scheduleStart, today) / totalDays) * 100 : 0;
+
+  return (
+    <div className="rounded-2xl border bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-black">Visual Phase Schedule</h4>
+        <div className="text-xs font-bold text-slate-500">
+          {formatDate(scheduleStart.toISOString().slice(0, 10))} → {formatDate(scheduleEnd.toISOString().slice(0, 10))}
+        </div>
+      </div>
+
+      <div className="mt-3 overflow-x-auto">
+        <div className="min-w-[720px]">
+          <div className="relative ml-32 h-8 border-b">
+            {markers.map((marker) => (
+              <div key={`${marker.label}-${marker.left}`} className="absolute top-0" style={{ left: `${marker.left}%` }}>
+                <div className="h-8 border-l border-slate-300 pl-1 text-[11px] font-black text-slate-500">
+                  {marker.label}
+                </div>
+              </div>
+            ))}
+
+            {todayInRange ? (
+              <div className="absolute top-0 z-10 h-full border-l-2 border-red-500" style={{ left: `${todayLeft}%` }}>
+                <div className="ml-1 rounded bg-red-500 px-1 text-[10px] font-black text-white">Today</div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-2 space-y-3">
+            {datedPhases.map(({ phase, index, start, end }) => {
+              const left = Math.max(0, Math.min(100, (daysBetween(scheduleStart, start) / totalDays) * 100));
+              const width = Math.max(2, Math.min(100 - left, (Math.max(1, daysBetween(start, end)) / totalDays) * 100));
+              const percent = Math.max(0, Math.min(100, phase.progress_percent ?? 0));
+
+              return (
+                <div key={phase.id ?? `${phase.name}-${index}`} className="grid grid-cols-[120px_1fr] items-center gap-3">
+                  <div className="truncate text-xs font-black">{phase.name || phase.phase}</div>
+
+                  <div className="relative h-9 rounded-xl bg-slate-100">
+                    <div
+                      className={`absolute top-1 h-7 rounded-xl ${phaseColorClass(index)} shadow-sm`}
+                      style={{ left: `${left}%`, width: `${width}%` }}
+                      title={`${phase.name || phase.phase}: ${formatDate(phase.start_date)} - ${formatDate(phase.end_date)}`}
+                    >
+                      <div
+                        className="h-full rounded-xl bg-black/10"
+                        style={{ width: `${percent}%` }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center truncate px-2 text-[10px] font-black text-black">
+                        {percent}%
+                      </div>
+                    </div>
+
+                    {todayInRange ? (
+                      <div className="absolute top-0 h-full border-l-2 border-red-500" style={{ left: `${todayLeft}%` }} />
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 text-xs font-bold text-slate-500">
+            <span className="h-3 w-3 rounded bg-black/10" />
+            darker fill = % complete
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -263,7 +404,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       <div className="card">
         <h2 className="text-2xl font-black">Operations Board</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Home screen for daily operations. Equipment cards are subtle; the small status dot shows active/down/transporting state.
+          Home screen for daily operations. Expand a job to see project files, visual phase schedule, and quick request buttons.
         </p>
       </div>
 
@@ -335,7 +476,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3 lg:grid-cols-3">
+                  <div className="grid gap-3 xl:grid-cols-[1.1fr_1.7fr]">
                     <div className="rounded-2xl border bg-slate-50 p-3">
                       <h4 className="font-black">Job Info</h4>
                       <div className="mt-2 space-y-1 text-sm">
@@ -343,12 +484,14 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                         <div><span className="font-black">Owner:</span> {job.owner || "—"}</div>
                         <div><span className="font-black">Site Contact:</span> {job.site_contact || "—"}</div>
                       </div>
+
+                      <div className="mt-4">
+                        <h4 className="font-black">Phase Details</h4>
+                        <PhaseList phases={sortedPhases} />
+                      </div>
                     </div>
 
-                    <div className="rounded-2xl border bg-slate-50 p-3 lg:col-span-2">
-                      <h4 className="font-black">Phase Calendar</h4>
-                      <PhaseMiniCalendar phases={sortedPhases} />
-                    </div>
+                    <PhaseVisualCalendar phases={sortedPhases} />
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-3">
