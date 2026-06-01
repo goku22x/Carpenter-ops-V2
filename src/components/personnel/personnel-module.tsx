@@ -23,6 +23,7 @@ const emptyForm = {
 export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Props) {
   const [selectedId, setSelectedId] = useState<string | "new">(personnel[0]?.id ?? "new");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const selected = personnel.find((person) => person.id === selectedId);
 
   const [form, setForm] = useState(() =>
@@ -92,15 +93,37 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
 
       await onPersonnelChanged();
 
-      if (data?.id) {
-        setSelectedId(data.id);
-      }
+      if (data?.id) setSelectedId(data.id);
 
       alert("Personnel saved.");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Save failed.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deletePersonnel() {
+    if (!isAdmin) return alert("Admin only.");
+    if (selectedId === "new") return;
+
+    const ok = confirm(`Delete ${selected?.full_name ?? "this person"}? This cannot be undone.`);
+    if (!ok) return;
+
+    setDeleting(true);
+
+    try {
+      const res = await fetch(`/api/personnel/${selectedId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Delete failed.");
+
+      await onPersonnelChanged();
+      selectPerson("new");
+      alert("Personnel deleted.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -144,7 +167,14 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
       </aside>
 
       <section className="card">
-        <h2 className="text-2xl font-black">{selectedId === "new" ? "New Person" : "Personnel Info"}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-2xl font-black">{selectedId === "new" ? "New Person" : "Personnel Info"}</h2>
+          {isAdmin && selectedId !== "new" ? (
+            <button className="btn-danger" disabled={deleting} onClick={deletePersonnel}>
+              {deleting ? "Deleting..." : "Delete Personnel"}
+            </button>
+          ) : null}
+        </div>
 
         {!isAdmin ? (
           <p className="mt-2 rounded-xl bg-yellow-50 p-3 text-sm font-bold text-yellow-900">
@@ -186,12 +216,7 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
         </div>
 
         <label className="label">Status</label>
-        <select
-          className="input"
-          disabled={!isAdmin}
-          value={form.active ? "active" : "inactive"}
-          onChange={(event) => setForm({ ...form, active: event.target.value === "active" })}
-        >
+        <select className="input" disabled={!isAdmin} value={form.active ? "active" : "inactive"} onChange={(event) => setForm({ ...form, active: event.target.value === "active" })}>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
