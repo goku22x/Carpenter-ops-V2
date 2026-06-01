@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import type { Job, Profile } from "@/lib/types";
 import { JobsModule } from "@/components/jobs/jobs-module";
 
@@ -11,7 +12,21 @@ type Props = {
 };
 
 export function DashboardShell({ userEmail, profile, initialJobs }: Props) {
+  const supabase = createClient();
   const [view, setView] = useState<"jobs" | "active" | "operations">("jobs");
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+
+    try {
+      await supabase.auth.signOut();
+      window.location.href = "/login";
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Logout failed.");
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <main className="mx-auto max-w-[1600px] p-4">
@@ -30,6 +45,9 @@ export function DashboardShell({ userEmail, profile, initialJobs }: Props) {
           <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Jobs</button>
           <button className={view === "active" ? "btn-primary" : "btn-secondary"} onClick={() => setView("active")}>Active Work</button>
           <button className={view === "operations" ? "btn-primary" : "btn-secondary"} onClick={() => setView("operations")}>Operations Board</button>
+          <button className="btn-secondary" disabled={loggingOut} onClick={handleLogout}>
+            {loggingOut ? "Logging out..." : "Logout"}
+          </button>
         </div>
       </section>
 
