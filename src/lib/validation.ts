@@ -15,6 +15,17 @@ export const jobPayloadSchema = z.object({
   })
 });
 
+export const equipmentPayloadSchema = z.object({
+  name: z.string().min(1, "Equipment name is required"),
+  equipment_number: z.string().optional().nullable(),
+  equipment_type: z.string().optional().nullable(),
+  status: z.string().default("Active"),
+  current_job_id: z.string().uuid().optional().nullable(),
+  current_site: z.string().optional().nullable(),
+  photo_url: z.string().optional().nullable(),
+  notes: z.string().optional().nullable()
+});
+
 export const workRequestSchema = z.object({
   job_id: z.string().uuid().optional().nullable(),
   department: z.enum([

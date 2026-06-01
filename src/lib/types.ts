@@ -30,3 +30,19 @@ export type Profile = {
   role: string;
   department: string | null;
 };
+
+export type Equipment = {
+  id: string;
+  organization_id: string;
+  name: string;
+  equipment_number: string | null;
+  equipment_type: string | null;
+  status: string;
+  current_job_id: string | null;
+  current_site: string | null;
+  assigned_foreman_id: string | null;
+  photo_url: string | null;
+  notes: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
