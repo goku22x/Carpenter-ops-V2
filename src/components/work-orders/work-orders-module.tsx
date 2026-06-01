@@ -31,47 +31,200 @@ const emptyForm = {
   custom_fields: {} as Record<string, string>
 };
 
-function getCustomFieldLabels(type: string) {
-  switch (type) {
+function getDefaultTitle(workType: string) {
+  switch (workType) {
     case "Survey":
-      return [
-        ["survey_scope", "Survey Scope / Stakeout Needed"],
-        ["station_range", "Station / Area"],
-        ["plan_link", "Plan / Dropbox Link"]
-      ];
+      return "Survey Request";
     case "Maintenance":
-      return [
-        ["issue", "Issue"],
-        ["symptoms", "Symptoms / Notes"],
-        ["downtime_impact", "Downtime Impact"]
-      ];
+      return "Maintenance Request";
     case "Mobilization":
-      return [
-        ["from_location", "From Location"],
-        ["to_location", "To Location"],
-        ["needed_by_time", "Needed By Time"]
-      ];
+      return "Move Equipment";
     case "Trucking":
-      return [
-        ["material", "Material"],
-        ["from_location", "From"],
-        ["to_location", "To"],
-        ["truck_count", "Truck Count"]
-      ];
+      return "Trucking Request";
     case "Foreman Assignment":
-      return [
-        ["assignment_reason", "Assignment Reason"],
-        ["start_date", "Start Date"],
-        ["crew_notes", "Crew Notes"]
-      ];
+      return "Assign Foreman";
     case "Office":
-      return [
-        ["office_category", "Office Category"],
-        ["document_needed", "Document / Info Needed"]
-      ];
+      return "Office Request";
     default:
-      return [["extra_notes", "Extra Notes"]];
+      return "General Work Order";
   }
+}
+
+function getSimplePrompt(workType: string) {
+  switch (workType) {
+    case "Survey":
+      return "What do you need surveyed or staked?";
+    case "Maintenance":
+      return "What is wrong?";
+    case "Mobilization":
+      return "What needs moved?";
+    case "Trucking":
+      return "What hauling/trucking do you need?";
+    case "Foreman Assignment":
+      return "Who needs assigned to this job?";
+    case "Office":
+      return "What do you need from the office?";
+    default:
+      return "What needs done?";
+  }
+}
+
+function CustomFields({
+  workType,
+  fields,
+  update
+}: {
+  workType: string;
+  fields: Record<string, string>;
+  update: (key: string, value: string) => void;
+}) {
+  if (workType === "Survey") {
+    return (
+      <div className="grid gap-3">
+        <div>
+          <label className="label">Survey Type</label>
+          <select className="input" value={fields.survey_type ?? ""} onChange={(e) => update("survey_type", e.target.value)}>
+            <option value="">Select</option>
+            <option value="Stakeout">Stakeout</option>
+            <option value="Topo / Asbuilt">Topo / Asbuilt</option>
+            <option value="Control">Control</option>
+            <option value="Machine Model / Surface Check">Machine Model / Surface Check</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">Area / Station / Line</label>
+          <input className="input" placeholder="MH-12 to MH-15, north entrance curb, etc." value={fields.area ?? ""} onChange={(e) => update("area", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Plan / Dropbox Link</label>
+          <input className="input" placeholder="Optional" value={fields.plan_link ?? ""} onChange={(e) => update("plan_link", e.target.value)} />
+        </div>
+      </div>
+    );
+  }
+
+  if (workType === "Maintenance") {
+    return (
+      <div className="grid gap-3">
+        <div>
+          <label className="label">Can it still run?</label>
+          <select className="input" value={fields.can_run ?? ""} onChange={(e) => update("can_run", e.target.value)}>
+            <option value="">Select</option>
+            <option value="Yes">Yes</option>
+            <option value="No - Down">No - Down</option>
+            <option value="Barely / Needs checked">Barely / Needs checked</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">Issue</label>
+          <input className="input" placeholder="Hydraulic leak, flat tire, won't start" value={fields.issue ?? ""} onChange={(e) => update("issue", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Photo / Notes Link</label>
+          <input className="input" placeholder="Optional" value={fields.photo_link ?? ""} onChange={(e) => update("photo_link", e.target.value)} />
+        </div>
+      </div>
+    );
+  }
+
+  if (workType === "Mobilization") {
+    return (
+      <div className="grid gap-3">
+        <div>
+          <label className="label">From</label>
+          <input className="input" placeholder="Current job, yard, shop, etc." value={fields.from_location ?? ""} onChange={(e) => update("from_location", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">To</label>
+          <input className="input" placeholder="Destination job or site" value={fields.to_location ?? ""} onChange={(e) => update("to_location", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">When needed?</label>
+          <input className="input" placeholder="Tomorrow morning, before lunch, ASAP" value={fields.when_needed ?? ""} onChange={(e) => update("when_needed", e.target.value)} />
+        </div>
+      </div>
+    );
+  }
+
+  if (workType === "Trucking") {
+    return (
+      <div className="grid gap-3">
+        <div>
+          <label className="label">Material</label>
+          <input className="input" placeholder="Dirt, rock, asphalt, select fill, etc." value={fields.material ?? ""} onChange={(e) => update("material", e.target.value)} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">From</label>
+            <input className="input" value={fields.from_location ?? ""} onChange={(e) => update("from_location", e.target.value)} />
+          </div>
+          <div>
+            <label className="label">To</label>
+            <input className="input" value={fields.to_location ?? ""} onChange={(e) => update("to_location", e.target.value)} />
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">Truck Count</label>
+            <input className="input" placeholder="4 quads" value={fields.truck_count ?? ""} onChange={(e) => update("truck_count", e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Start Time</label>
+            <input className="input" placeholder="7 AM" value={fields.start_time ?? ""} onChange={(e) => update("start_time", e.target.value)} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (workType === "Foreman Assignment") {
+    return (
+      <div className="grid gap-3">
+        <div>
+          <label className="label">Foreman Requested</label>
+          <input className="input" placeholder="Name or leave blank if unknown" value={fields.foreman_name ?? ""} onChange={(e) => update("foreman_name", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Start Date / Time</label>
+          <input className="input" placeholder="Monday morning" value={fields.start_when ?? ""} onChange={(e) => update("start_when", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Crew Notes</label>
+          <input className="input" placeholder="Pipe crew, grading crew, etc." value={fields.crew_notes ?? ""} onChange={(e) => update("crew_notes", e.target.value)} />
+        </div>
+      </div>
+    );
+  }
+
+  if (workType === "Office") {
+    return (
+      <div className="grid gap-3">
+        <div>
+          <label className="label">Office Request Type</label>
+          <select className="input" value={fields.office_type ?? ""} onChange={(e) => update("office_type", e.target.value)}>
+            <option value="">Select</option>
+            <option value="Plans / Documents">Plans / Documents</option>
+            <option value="Submittal / Paperwork">Submittal / Paperwork</option>
+            <option value="Billing / Ticket">Billing / Ticket</option>
+            <option value="Contact Info">Contact Info</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">What info/document is needed?</label>
+          <input className="input" value={fields.office_need ?? ""} onChange={(e) => update("office_need", e.target.value)} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label className="label">Extra Details</label>
+      <input className="input" value={fields.extra_notes ?? ""} onChange={(e) => update("extra_notes", e.target.value)} />
+    </div>
+  );
 }
 
 export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdmin, onWorkOrdersChanged }: Props) {
@@ -100,8 +253,6 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
 
   const jobNameById = useMemo(() => new Map(jobs.map((job) => [job.id, job.name])), [jobs]);
   const personNameById = useMemo(() => new Map(personnel.map((p) => [p.id, p.full_name])), [personnel]);
-  const equipmentNameById = useMemo(() => new Map(equipment.map((e) => [e.id, `${e.name} #${e.equipment_number ?? "—"}`])), [equipment]);
-
   const filteredOrders = workOrders.filter((order) => filter === "All" || order.work_type === filter);
 
   function selectOrder(order: WorkOrder | "new") {
@@ -126,6 +277,15 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     });
   }
 
+  function setWorkType(type: string) {
+    setForm({
+      ...form,
+      work_type: type,
+      title: form.title || getDefaultTitle(type),
+      custom_fields: {}
+    });
+  }
+
   function updateCustomField(key: string, value: string) {
     setForm({
       ...form,
@@ -137,7 +297,8 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
   }
 
   async function saveWorkOrder() {
-    if (!form.title.trim()) return alert("Title is required.");
+    const title = form.title.trim() || getDefaultTitle(form.work_type);
+    if (!form.description.trim()) return alert("Please answer the main question.");
 
     setSaving(true);
 
@@ -147,6 +308,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
 
       const payload = {
         ...form,
+        title,
         job_id: form.job_id || null,
         assigned_personnel_id: form.assigned_personnel_id || null,
         related_equipment_id: form.related_equipment_id || null,
@@ -202,7 +364,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
       <aside className="card">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-2xl font-black">Work Orders</h2>
-          <button className="btn-primary" onClick={() => selectOrder("new")}>New Work Order</button>
+          <button className="btn-primary" onClick={() => selectOrder("new")}>New</button>
         </div>
 
         <label className="label">Filter</label>
@@ -243,37 +405,43 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
           <h2 className="text-2xl font-black">{selectedId === "new" ? "New Work Order" : "Work Order Info"}</h2>
           {isAdmin && selectedId !== "new" ? (
             <button className="btn-danger" disabled={deleting} onClick={deleteWorkOrder}>
-              {deleting ? "Deleting..." : "Delete Work Order"}
+              {deleting ? "Deleting..." : "Delete"}
             </button>
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label">Work Type</label>
-            <select
-              className="input"
-              value={form.work_type}
-              onChange={(event) => setForm({ ...form, work_type: event.target.value, custom_fields: {} })}
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {WORK_ORDER_TYPES.map((type) => (
+            <button
+              key={type}
+              className={`rounded-2xl border px-3 py-3 text-sm font-black ${form.work_type === type ? getWorkOrderTypeColor(type) : "border-slate-200 bg-white text-slate-700"}`}
+              onClick={() => setWorkType(type)}
             >
-              {WORK_ORDER_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="label">Job</label>
-            <select className="input" value={form.job_id} onChange={(event) => setForm({ ...form, job_id: event.target.value })}>
-              <option value="">No job / general</option>
-              {jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
-            </select>
-          </div>
+              {type}
+            </button>
+          ))}
         </div>
 
-        <label className="label">Title</label>
-        <input className="input" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+        <label className="label">Job</label>
+        <select className="input" value={form.job_id} onChange={(event) => setForm({ ...form, job_id: event.target.value })}>
+          <option value="">No job / general</option>
+          {jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
+        </select>
 
-        <label className="label">Description</label>
-        <textarea className="input min-h-24" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+        <label className="label">Main Question</label>
+        <textarea
+          className="input min-h-24 text-base"
+          placeholder={getSimplePrompt(form.work_type)}
+          value={form.description}
+          onChange={(event) => {
+            const value = event.target.value;
+            setForm({
+              ...form,
+              description: value,
+              title: form.title || getDefaultTitle(form.work_type)
+            });
+          }}
+        />
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
@@ -282,29 +450,26 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
               {WORK_ORDER_PRIORITIES.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
             </select>
           </div>
-
           <div>
             <label className="label">Status</label>
             <select className="input" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
               {WORK_ORDER_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
             </select>
           </div>
-
           <div>
-            <label className="label">Due Date</label>
+            <label className="label">Need By</label>
             <input className="input" type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} />
           </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="label">Assigned To</label>
+            <label className="label">Assign To</label>
             <select className="input" value={form.assigned_personnel_id} onChange={(event) => setForm({ ...form, assigned_personnel_id: event.target.value })}>
               <option value="">Unassigned</option>
               {personnel.map((person) => <option key={person.id} value={person.id}>{person.full_name}</option>)}
             </select>
           </div>
-
           <div>
             <label className="label">Related Equipment</label>
             <select className="input" value={form.related_equipment_id} onChange={(event) => setForm({ ...form, related_equipment_id: event.target.value })}>
@@ -315,24 +480,16 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
         </div>
 
         <div className="mt-4 rounded-2xl border bg-slate-50 p-3">
-          <h3 className="font-black">Custom Fields: {form.work_type}</h3>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            {getCustomFieldLabels(form.work_type).map(([key, label]) => (
-              <div key={key}>
-                <label className="label">{label}</label>
-                <input
-                  className="input"
-                  value={form.custom_fields[key] ?? ""}
-                  onChange={(event) => updateCustomField(key, event.target.value)}
-                />
-              </div>
-            ))}
+          <h3 className="font-black">{form.work_type} Details</h3>
+          <p className="mt-1 text-xs text-slate-500">Short form. Only the questions needed for this department.</p>
+          <div className="mt-3">
+            <CustomFields workType={form.work_type} fields={form.custom_fields} update={updateCustomField} />
           </div>
         </div>
 
         <div className="mt-4">
-          <button className="btn-primary" disabled={saving} onClick={saveWorkOrder}>
-            {saving ? "Saving..." : "Save Work Order"}
+          <button className="btn-primary w-full sm:w-auto" disabled={saving} onClick={saveWorkOrder}>
+            {saving ? "Saving..." : "Submit Work Order"}
           </button>
         </div>
       </section>
