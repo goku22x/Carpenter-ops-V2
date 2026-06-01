@@ -16,19 +16,8 @@ async function getProfile(supabase: Awaited<ReturnType<typeof createClient>>) {
   return profile;
 }
 
-export async function GET() {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("jobs")
-    .select("*, job_phases(*)")
-    .eq("active", true)
-    .order("sort_order", { ascending: true });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json(data ?? []);
-}
-
-export async function POST(request: Request) {
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
   const supabase = await createClient();
   const profile = await getProfile(supabase);
 
@@ -40,32 +29,37 @@ export async function POST(request: Request) {
 
   const { data: job, error: jobError } = await supabase
     .from("jobs")
-    .insert({
-      organization_id: profile.organization_id,
+    .update({
       name: payload.name,
       address: payload.address || null,
       owner: payload.owner || null,
       site_contact: payload.site_contact || null,
       dropbox_url: payload.dropbox_url || null,
       notes: payload.notes || null,
-      sort_order: 9999,
-      active: true
+      updated_at: new Date().toISOString()
     })
+    .eq("id", id)
+    .eq("organization_id", profile.organization_id)
     .select()
     .single();
 
   if (jobError) return NextResponse.json({ error: jobError.message }, { status: 400 });
 
-  const phaseRows = PHASES.map((phase) => ({
-    job_id: job.id,
-    phase: phase.key,
-    start_date: payload.phases[phase.key].start_date || null,
-    end_date: payload.phases[phase.key].end_date || null,
-    status: "Not Started"
-  }));
+  for (const phase of PHASES) {
+    const values = payload.phases[phase.key];
 
-  const { error: phaseError } = await supabase.from("job_phases").insert(phaseRows);
-  if (phaseError) return NextResponse.json({ error: phaseError.message }, { status: 400 });
+    const { error } = await supabase
+      .from("job_phases")
+      .upsert({
+        job_id: id,
+        phase: phase.key,
+        start_date: values.start_date || null,
+        end_date: values.end_date || null,
+        status: "Not Started"
+      }, { onConflict: "job_id,phase" });
 
-  return NextResponse.json(job, { status: 201 });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json(job);
 }

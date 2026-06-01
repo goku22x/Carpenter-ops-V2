@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "Carpenter Operations Hub",
-  description: "Construction field operations MVP"
+  description: "Construction field operations platform"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

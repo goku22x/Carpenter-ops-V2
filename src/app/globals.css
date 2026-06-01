@@ -11,7 +11,7 @@ body {
 }
 
 .btn {
-  @apply rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50;
+  @apply rounded-xl px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .btn-primary {
@@ -22,10 +22,26 @@ body {
   @apply btn bg-slate-700 text-white;
 }
 
+.btn-danger {
+  @apply btn bg-red-600 text-white;
+}
+
 .input {
-  @apply w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none;
+  @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-carpenter-red;
 }
 
 .label {
   @apply mb-1 mt-3 block text-xs font-black uppercase tracking-wide text-slate-500;
+}
+
+.phase-card {
+  @apply overflow-hidden rounded-2xl border border-slate-300 bg-white;
+}
+
+.phase-title {
+  @apply px-3 py-2 text-xs font-black uppercase tracking-wide text-black;
+}
+
+.phase-body {
+  @apply grid gap-3 p-3 sm:grid-cols-2;
 }

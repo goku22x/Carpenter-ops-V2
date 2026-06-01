@@ -7,8 +7,14 @@ export async function createClient() {
 
   return createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
     cookies: {
-      getAll: () => cookieStore.getAll(),
-      setAll: (items) => items.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          cookieStore.set(name, value, options);
+        });
+      }
     }
   });
 }

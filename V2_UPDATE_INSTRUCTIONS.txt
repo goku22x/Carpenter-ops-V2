@@ -1,0 +1,42 @@
+V2 AUTH + JOBS FOUNDATION UPDATE
+
+FILES TO REPLACE / ADD IN GITHUB ROOT:
+- package.json
+- postcss.config.mjs
+- src/lib/env.ts
+- src/lib/supabase/client.ts
+- src/lib/supabase/server.ts
+- src/lib/supabase/admin.ts
+- src/lib/types.ts
+- src/lib/phases.ts
+- src/lib/validation.ts
+- src/app/globals.css
+- src/app/layout.tsx
+- src/app/page.tsx
+- src/app/login/page.tsx
+- src/app/api/bootstrap/route.ts
+- src/app/dashboard/page.tsx
+- src/app/api/jobs/route.ts
+- src/app/api/jobs/[id]/route.ts
+- src/components/auth/login-form.tsx
+- src/components/dashboard/dashboard-shell.tsx
+- src/components/jobs/jobs-module.tsx
+- database/v2_foundation_patch.sql
+
+SQL TO RUN:
+- database/v2_foundation_patch.sql
+
+VERCEL ENVIRONMENT VARIABLE TO ADD:
+- SUPABASE_SERVICE_ROLE_KEY
+
+Where to get it:
+Supabase → Project Settings → API Keys → Secret key.
+Use the secret key. Do NOT put it in GitHub. Put it only in Vercel Environment Variables.
+
+AFTER UPLOAD:
+1. Commit files.
+2. Run v2_foundation_patch.sql in Supabase.
+3. Add SUPABASE_SERVICE_ROLE_KEY in Vercel.
+4. Redeploy with build cache unchecked.
+5. Visit /login.
+6. Create first account. First account becomes admin automatically.
