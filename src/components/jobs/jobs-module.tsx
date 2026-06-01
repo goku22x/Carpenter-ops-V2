@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { Job, JobPhase } from "@/lib/types";
+import type { Job } from "@/lib/types";
 import { DEFAULT_JOB_PHASES, phaseColorClass } from "@/lib/phases";
+import { formatDateRange } from "@/lib/date-format";
 
 type Props = {
   initialJobs: Job[];
@@ -243,7 +244,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
                     <div key={`${job.id}-${phase.id ?? index}`} className={`${phaseColorClass(index)} rounded-lg px-2 py-1 text-[11px] font-black text-black`}>
                       <div className="truncate">{phase.name || phase.phase}</div>
                       <div className="text-[10px] opacity-80">{phase.progress_percent ?? 0}%</div>
-                      <div className="text-[10px] opacity-70">{phase.start_date ?? "—"} → {phase.end_date ?? "—"}</div>
+                      <div className="text-[10px] opacity-70">{formatDateRange(phase.start_date, phase.end_date)}</div>
                     </div>
                   ))}
                 </div>
@@ -302,51 +303,22 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
                 <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_110px_auto]">
                   <div>
                     <label className="label mt-0">Phase Name</label>
-                    <input
-                      className="input"
-                      disabled={!isAdmin}
-                      value={phase.name}
-                      onChange={(e) => updatePhase(index, { name: e.target.value })}
-                    />
+                    <input className="input" disabled={!isAdmin} value={phase.name} onChange={(e) => updatePhase(index, { name: e.target.value })} />
                   </div>
 
                   <div>
                     <label className="label mt-0">Start</label>
-                    <input
-                      className="input"
-                      type="date"
-                      disabled={!isAdmin}
-                      value={phase.start_date ?? ""}
-                      onChange={(e) => updatePhase(index, { start_date: e.target.value || null })}
-                    />
+                    <input className="input" type="date" disabled={!isAdmin} value={phase.start_date ?? ""} onChange={(e) => updatePhase(index, { start_date: e.target.value || null })} />
                   </div>
 
                   <div>
                     <label className="label mt-0">End</label>
-                    <input
-                      className="input"
-                      type="date"
-                      disabled={!isAdmin}
-                      value={phase.end_date ?? ""}
-                      onChange={(e) => updatePhase(index, { end_date: e.target.value || null })}
-                    />
+                    <input className="input" type="date" disabled={!isAdmin} value={phase.end_date ?? ""} onChange={(e) => updatePhase(index, { end_date: e.target.value || null })} />
                   </div>
 
                   <div>
                     <label className="label mt-0">%</label>
-                    <input
-                      className="input"
-                      type="number"
-                      min={0}
-                      max={100}
-                      disabled={!isAdmin}
-                      value={phase.progress_percent ?? 0}
-                      onChange={(e) =>
-                        updatePhase(index, {
-                          progress_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0))
-                        })
-                      }
-                    />
+                    <input className="input" type="number" min={0} max={100} disabled={!isAdmin} value={phase.progress_percent ?? 0} onChange={(e) => updatePhase(index, { progress_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
                   </div>
 
                   {isAdmin ? (
