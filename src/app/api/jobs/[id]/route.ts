@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { jobPayloadSchema } from "@/lib/validation";
-import { PHASES } from "@/lib/phases";
+import { phaseSlug } from "@/lib/phases";
 
 async function getProfile(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data: userData } = await supabase.auth.getUser();
@@ -45,22 +45,29 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   if (jobError) return NextResponse.json({ error: jobError.message }, { status: 400 });
 
-  for (const phase of PHASES) {
-    const values = payload.phases[phase.key];
+  const { error: deleteError } = await supabase
+    .from("job_phases")
+    .delete()
+    .eq("job_id", id);
 
-    const { error } = await supabase
-      .from("job_phases")
-      .upsert({
-        job_id: id,
-        phase: phase.key,
-        start_date: values.start_date || null,
-        end_date: values.end_date || null,
-        progress_percent: values.progress_percent ?? 0,
-        status: "Not Started"
-      }, { onConflict: "job_id,phase" });
+  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 400 });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  }
+  const phaseRows = payload.phases.map((phase, index) => ({
+    job_id: id,
+    phase: phaseSlug(phase.name, index),
+    name: phase.name,
+    start_date: phase.start_date || null,
+    end_date: phase.end_date || null,
+    progress_percent: phase.progress_percent ?? 0,
+    sort_order: phase.sort_order ?? index,
+    status: "Not Started"
+  }));
+
+  const { error: insertError } = await supabase
+    .from("job_phases")
+    .insert(phaseRows);
+
+  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 400 });
 
   return NextResponse.json(job);
 }
