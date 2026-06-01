@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import type { Equipment, Job, Personnel, Profile } from "@/lib/types";
+import type { Equipment, Job, Personnel, Profile, WorkOrder } from "@/lib/types";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -42,6 +42,12 @@ export default async function DashboardPage() {
     .order("full_name", { ascending: true })
     .returns<Personnel[]>();
 
+  const { data: workOrders } = await supabase
+    .from("work_orders")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .returns<WorkOrder[]>();
+
   return (
     <DashboardShell
       userEmail={authData.user.email ?? ""}
@@ -49,6 +55,7 @@ export default async function DashboardPage() {
       initialJobs={jobs ?? []}
       initialEquipment={equipment ?? []}
       initialPersonnel={personnel ?? []}
+      initialWorkOrders={workOrders ?? []}
     />
   );
 }
