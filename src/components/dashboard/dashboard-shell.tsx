@@ -19,6 +19,7 @@ type Props = {
 export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment, initialPersonnel }: Props) {
   const supabase = createClient();
   const [view, setView] = useState<"jobs" | "personnel" | "equipment" | "active" | "operations">("jobs");
+  const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [equipment, setEquipment] = useState<Equipment[]>(initialEquipment);
   const [personnel, setPersonnel] = useState<Personnel[]>(initialPersonnel);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -33,6 +34,18 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       alert(error instanceof Error ? error.message : "Logout failed.");
       setLoggingOut(false);
     }
+  }
+
+  async function refreshJobs() {
+    const res = await fetch("/api/jobs", { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Could not refresh jobs.");
+    }
+
+    setJobs(data);
+    return data as Job[];
   }
 
   async function refreshEquipment() {
@@ -63,7 +76,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
     <main className="mx-auto max-w-[1600px] p-4">
       <header className="rounded-3xl border-b-8 border-carpenter-red bg-carpenter-black p-5 text-white shadow-xl">
         <h1 className="text-3xl font-black">Carpenter Operations Hub</h1>
-        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Personnel foundation</p>
+        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Admin delete actions</p>
       </header>
 
       <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -85,7 +98,14 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       </section>
 
       {view === "jobs" ? (
-        <JobsModule initialJobs={initialJobs} isAdmin={profile.role === "admin"} />
+        <JobsModule
+          initialJobs={jobs}
+          isAdmin={profile.role === "admin"}
+          onJobsChanged={async () => {
+            await refreshJobs();
+            await refreshEquipment();
+          }}
+        />
       ) : null}
 
       {view === "personnel" ? (
@@ -101,7 +121,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       {view === "equipment" ? (
         <EquipmentModule
           equipment={equipment}
-          jobs={initialJobs}
+          jobs={jobs}
           isAdmin={profile.role === "admin"}
           onEquipmentChanged={async () => {
             await refreshEquipment();
@@ -110,13 +130,13 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       ) : null}
 
       {view === "operations" ? (
-        <EquipmentBoard equipment={equipment} jobs={initialJobs} />
+        <EquipmentBoard equipment={equipment} jobs={jobs} />
       ) : null}
 
       {view === "active" ? (
         <section className="card mt-4">
           <h2 className="text-2xl font-black">Active Work</h2>
-          <p className="mt-2 text-sm text-slate-500">This module comes next after Personnel is solid.</p>
+          <p className="mt-2 text-sm text-slate-500">This module comes next.</p>
         </section>
       ) : null}
     </main>
