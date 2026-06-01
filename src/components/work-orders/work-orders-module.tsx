@@ -237,7 +237,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     }
   }
 
-  function JobField({ required = false }: { required?: boolean }) {
+  function renderJobField(required = false) {
     return (
       <div>
         <label className="label">Job{required ? " *" : ""}</label>
@@ -249,7 +249,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     );
   }
 
-  function NeedByField() {
+  function renderNeedByField() {
     return (
       <div>
         <label className="label">Need By</label>
@@ -258,7 +258,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     );
   }
 
-  function PriorityField() {
+  function renderPriorityField() {
     return (
       <div>
         <label className="label">Priority</label>
@@ -269,7 +269,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     );
   }
 
-  function AdminControls() {
+  function renderAdminControls() {
     if (!isAdmin) return null;
 
     return (
@@ -297,11 +297,11 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     );
   }
 
-  function FormBody() {
+  function renderFormBody() {
     if (form.work_type === "Survey") {
       return (
         <div className="space-y-3">
-          <JobField required />
+          {renderJobField(true)}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="label">Survey Type *</label>
@@ -315,13 +315,13 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
                 <option value="Other">Other</option>
               </select>
             </div>
-            <NeedByField />
+            {renderNeedByField()}
           </div>
           <div>
             <label className="label">Location / What Needed *</label>
             <textarea className="input min-h-24 text-base" placeholder="Example: Stake MH-12 to MH-15 sewer." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
-          <PriorityField />
+          {renderPriorityField()}
         </div>
       );
     }
@@ -336,7 +336,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
               {equipment.map((item) => <option key={item.id} value={item.id}>{item.name} #{item.equipment_number ?? "—"}</option>)}
             </select>
           </div>
-          <JobField />
+          {renderJobField(false)}
           <div>
             <label className="label">Issue *</label>
             <textarea className="input min-h-24 text-base" placeholder="Example: hydraulic leak, flat tire, won't start." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -351,7 +351,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
                 <option value="Barely / Needs checked">Barely / Needs checked</option>
               </select>
             </div>
-            <PriorityField />
+            {renderPriorityField()}
           </div>
         </div>
       );
@@ -360,7 +360,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     if (form.work_type === "Mobilization") {
       return (
         <div className="space-y-3">
-          <JobField required />
+          {renderJobField(true)}
           <div>
             <label className="label">Equipment Type Needed *</label>
             <select className="input text-base" value={form.custom_fields.equipment_type_needed ?? ""} onChange={(e) => updateCustomField("equipment_type_needed", e.target.value)}>
@@ -373,8 +373,8 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
               <label className="label">Quantity</label>
               <input className="input" placeholder="1" value={form.custom_fields.quantity ?? ""} onChange={(e) => updateCustomField("quantity", e.target.value)} />
             </div>
-            <NeedByField />
-            <PriorityField />
+            {renderNeedByField()}
+            {renderPriorityField()}
           </div>
           <div>
             <label className="label">Notes</label>
@@ -387,7 +387,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     if (form.work_type === "Trucking") {
       return (
         <div className="space-y-3">
-          <JobField required />
+          {renderJobField(true)}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="label"># Trucks *</label>
@@ -403,7 +403,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
               <label className="label">Material</label>
               <input className="input" placeholder="Dirt, rock, select fill" value={form.custom_fields.material ?? ""} onChange={(e) => updateCustomField("material", e.target.value)} />
             </div>
-            <NeedByField />
+            {renderNeedByField()}
           </div>
           <div>
             <label className="label">Notes</label>
@@ -416,8 +416,8 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     if (form.work_type === "Foreman Assignment") {
       return (
         <div className="space-y-3">
-          <JobField required />
-          <NeedByField />
+          {renderJobField(true)}
+          {renderNeedByField()}
           <div>
             <label className="label">Notes</label>
             <textarea className="input min-h-20" placeholder="Crew notes, start date, special instructions." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -429,14 +429,14 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     if (form.work_type === "Office") {
       return (
         <div className="space-y-3">
-          <JobField />
+          {renderJobField(false)}
           <div>
             <label className="label">What do you need? *</label>
             <textarea className="input min-h-24 text-base" placeholder="Plans, paperwork, contact info, ticket, etc." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <NeedByField />
-            <PriorityField />
+            {renderNeedByField()}
+            {renderPriorityField()}
           </div>
         </div>
       );
@@ -444,12 +444,12 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
 
     return (
       <div className="space-y-3">
-        <JobField />
+        {renderJobField(false)}
         <div>
           <label className="label">What needs done? *</label>
           <textarea className="input min-h-24 text-base" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
-        <PriorityField />
+        {renderPriorityField()}
       </div>
     );
   }
@@ -517,10 +517,10 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
         </div>
 
         <div className="mt-4 rounded-2xl border bg-white p-3">
-          <FormBody />
+          {renderFormBody()}
         </div>
 
-        <AdminControls />
+        {renderAdminControls()}
 
         <div className="mt-4">
           <button className="btn-primary w-full sm:w-auto" disabled={saving} onClick={saveWorkOrder}>
