@@ -33,6 +33,7 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
   const [selectedId, setSelectedId] = useState<string | "new">(equipment[0]?.id ?? "new");
   const selected = equipment.find((item) => item.id === selectedId);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState(() =>
     selected
       ? {
@@ -52,12 +53,9 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
 
   useEffect(() => {
     if (selectedId === "new") return;
-
     const freshSelected = equipment.find((item) => item.id === selectedId);
-
-    if (!freshSelected && equipment.length > 0) {
-      selectItem(equipment[0]);
-    }
+    if (!freshSelected && equipment.length > 0) selectItem(equipment[0]);
+    if (!freshSelected && equipment.length === 0) selectItem("new");
   }, [equipment, selectedId]);
 
   function selectItem(item: Equipment | "new") {
@@ -108,16 +106,37 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
       if (!res.ok) throw new Error(data?.error ?? "Save failed.");
 
       await onEquipmentChanged();
-
-      if (data?.id) {
-        setSelectedId(data.id);
-      }
+      if (data?.id) setSelectedId(data.id);
 
       alert("Equipment saved.");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Save failed.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteEquipment() {
+    if (!isAdmin) return alert("Admin only.");
+    if (selectedId === "new") return;
+
+    const ok = confirm(`Delete ${selected?.name ?? "this equipment"}? This cannot be undone.`);
+    if (!ok) return;
+
+    setDeleting(true);
+
+    try {
+      const res = await fetch(`/api/equipment/${selectedId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Delete failed.");
+
+      await onEquipmentChanged();
+      selectItem("new");
+      alert("Equipment deleted.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -163,7 +182,14 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
       </aside>
 
       <section className="card">
-        <h2 className="text-2xl font-black">{selectedId === "new" ? "New Equipment" : "Equipment Info"}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-2xl font-black">{selectedId === "new" ? "New Equipment" : "Equipment Info"}</h2>
+          {isAdmin && selectedId !== "new" ? (
+            <button className="btn-danger" disabled={deleting} onClick={deleteEquipment}>
+              {deleting ? "Deleting..." : "Delete Equipment"}
+            </button>
+          ) : null}
+        </div>
 
         <label className="label">Equipment Name</label>
         <input className="input" disabled={!isAdmin} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
@@ -199,22 +225,10 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
         </div>
 
         <label className="label">Current Site Text</label>
-        <input
-          className="input"
-          disabled={!isAdmin || Boolean(form.current_job_id)}
-          placeholder="Yard, Shop, Pit, Dump, etc."
-          value={form.current_site}
-          onChange={(event) => setForm({ ...form, current_site: event.target.value })}
-        />
+        <input className="input" disabled={!isAdmin || Boolean(form.current_job_id)} placeholder="Yard, Shop, Pit, Dump, etc." value={form.current_site} onChange={(event) => setForm({ ...form, current_site: event.target.value })} />
 
         <label className="label">Photo File / URL</label>
-        <input
-          className="input"
-          disabled={!isAdmin}
-          placeholder="cat-d6-dozer.jpg or /equipment-images/cat-d6-dozer.jpg"
-          value={form.photo_url}
-          onChange={(event) => setForm({ ...form, photo_url: event.target.value })}
-        />
+        <input className="input" disabled={!isAdmin} placeholder="cat-d6-dozer.jpg or /equipment-images/cat-d6-dozer.jpg" value={form.photo_url} onChange={(event) => setForm({ ...form, photo_url: event.target.value })} />
 
         {form.photo_url ? (
           <div className="mt-3 h-40 w-56 overflow-hidden rounded-2xl border bg-white p-2">
