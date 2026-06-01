@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Job } from "@/lib/types";
 import { DEFAULT_JOB_PHASES, phaseColorClass } from "@/lib/phases";
 import { formatDateRange } from "@/lib/date-format";
@@ -17,6 +17,16 @@ type PhaseForm = {
   end_date: string | null;
   progress_percent: number | null;
   sort_order: number;
+};
+
+const emptyJobForm = {
+  name: "",
+  address: "",
+  owner: "",
+  site_contact: "",
+  dropbox_url: "",
+  notes: "",
+  phases: [] as PhaseForm[]
 };
 
 function defaultPhaseForm(): PhaseForm[] {
@@ -46,6 +56,25 @@ function phasesFromJob(job?: Job): PhaseForm[] {
   }));
 }
 
+function formFromJob(job?: Job) {
+  if (!job) {
+    return {
+      ...emptyJobForm,
+      phases: defaultPhaseForm()
+    };
+  }
+
+  return {
+    name: job.name,
+    address: job.address ?? "",
+    owner: job.owner ?? "",
+    site_contact: job.site_contact ?? "",
+    dropbox_url: job.dropbox_url ?? "",
+    notes: job.notes ?? "",
+    phases: phasesFromJob(job)
+  };
+}
+
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -64,45 +93,24 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [form, setForm] = useState(() => ({
-    name: selectedJob?.name ?? "",
-    address: selectedJob?.address ?? "",
-    owner: selectedJob?.owner ?? "",
-    site_contact: selectedJob?.site_contact ?? "",
-    dropbox_url: selectedJob?.dropbox_url ?? "",
-    notes: selectedJob?.notes ?? "",
-    phases: phasesFromJob(selectedJob)
-  }));
+  const [form, setForm] = useState(() => formFromJob(selectedJob));
 
-  function selectJob(job: Job | "new") {
-    if (job === "new") {
-      setSelectedId("new");
-      setForm({
-        name: "",
-        address: "",
-        owner: "",
-        site_contact: "",
-        dropbox_url: "",
-        notes: "",
-        phases: defaultPhaseForm()
-      });
-      return;
-    }
+  useEffect(() => {
+    setJobs(initialJobs);
+  }, [initialJobs]);
 
-    setSelectedId(job.id);
-    setForm({
-      name: job.name,
-      address: job.address ?? "",
-      owner: job.owner ?? "",
-      site_contact: job.site_contact ?? "",
-      dropbox_url: job.dropbox_url ?? "",
-      notes: job.notes ?? "",
-      phases: phasesFromJob(job)
-    });
+  function selectNewJob() {
+    setSelectedId("new");
+    setForm(formFromJob());
   }
 
-  function openDropbox() {
-    const url = normalizeUrl(form.dropbox_url);
+  function selectJob(job: Job) {
+    setSelectedId(job.id);
+    setForm(formFromJob(job));
+  }
+
+  function openDropbox(urlValue = form.dropbox_url) {
+    const url = normalizeUrl(urlValue);
     if (!url) {
       alert("No project files link has been added for this job yet.");
       return;
@@ -121,6 +129,8 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
   }
 
   function addPhase() {
+    if (!isAdmin) return;
+
     setForm({
       ...form,
       phases: [
@@ -137,6 +147,8 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
   }
 
   function deletePhase(index: number) {
+    if (!isAdmin) return;
+
     if (form.phases.length <= 1) {
       alert("A job needs at least one phase.");
       return;
@@ -228,7 +240,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
       await onJobsChanged?.();
 
       if (updated.length > 0) selectJob(updated[0]);
-      else selectJob("new");
+      else selectNewJob();
 
       alert("Job deleted.");
     } catch (err) {
@@ -242,54 +254,53 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
     return [...(job.job_phases ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   }
 
-  return (
-    <section className="mt-4 grid gap-4 lg:grid-cols-[420px_1fr]">
-      <aside className="card">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-2xl font-black">Jobs</h2>
-          {isAdmin ? <button className="btn-primary" onClick={() => selectJob("new")}>New Job</button> : null}
+  function JobCard({ job }: { job: Job }) {
+    const isSelected = selectedId === job.id;
+    const phases = getSortedPhases(job);
+
+    return (
+      <button
+        className={`w-full rounded-2xl border p-3 text-left ${isSelected ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600" : "border-slate-200 bg-white"}`}
+        onClick={() => selectJob(job)}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="font-black uppercase">{job.name}</div>
+          {job.dropbox_url ? (
+            <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-black text-blue-800">
+              FILES
+            </span>
+          ) : null}
         </div>
 
-        <div className="mt-4 space-y-3">
-          {jobs.length === 0 ? (
-            <p className="text-sm text-slate-500">No jobs yet.</p>
-          ) : (
-            jobs.map((job) => (
-              <button
-                key={job.id}
-                className={`w-full rounded-2xl border p-3 text-left ${selectedId === job.id ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white"}`}
-                onClick={() => selectJob(job)}
-              >
-                <div className="font-black uppercase">{job.name}</div>
-                <div className="mt-2 grid grid-cols-2 gap-1">
-                  {getSortedPhases(job).slice(0, 6).map((phase, index) => (
-                    <div key={`${job.id}-${phase.id ?? index}`} className={`${phaseColorClass(index)} rounded-lg px-2 py-1 text-[11px] font-black text-black`}>
-                      <div className="truncate">{phase.name || phase.phase}</div>
-                      <div className="text-[10px] opacity-80">{phase.progress_percent ?? 0}%</div>
-                      <div className="text-[10px] opacity-70">{formatDateRange(phase.start_date, phase.end_date)}</div>
-                    </div>
-                  ))}
-                </div>
-              </button>
-            ))
-          )}
+        <div className="mt-2 grid grid-cols-2 gap-1">
+          {phases.slice(0, 6).map((phase, index) => (
+            <div key={`${job.id}-${phase.id ?? index}`} className={`${phaseColorClass(index)} rounded-lg px-2 py-1 text-[11px] font-black text-black`}>
+              <div className="truncate">{phase.name || phase.phase}</div>
+              <div className="text-[10px] opacity-80">{phase.progress_percent ?? 0}%</div>
+              <div className="text-[10px] opacity-70">{formatDateRange(phase.start_date, phase.end_date)}</div>
+            </div>
+          ))}
         </div>
-      </aside>
+      </button>
+    );
+  }
 
-      <section className="card">
+  function JobEditor() {
+    return (
+      <section className="rounded-2xl border bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-black">{selectedId === "new" ? "New Job" : "Job Info"}</h2>
 
           <div className="flex flex-wrap gap-2">
             {selectedId !== "new" ? (
-              <button className="btn-primary" onClick={openDropbox}>
+              <button className="btn-primary" onClick={() => openDropbox()}>
                 Open Project Files
               </button>
             ) : null}
 
             {isAdmin && selectedId !== "new" ? (
               <button className="btn-danger" disabled={deleting} onClick={deleteJob}>
-                {deleting ? "Deleting..." : "Delete Job"}
+                {deleting ? "Deleting..." : "Delete"}
               </button>
             ) : null}
           </div>
@@ -297,7 +308,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
 
         {!isAdmin ? (
           <p className="mt-2 rounded-xl bg-yellow-50 p-3 text-sm font-bold text-yellow-900">
-            View only. Admins can edit jobs.
+            View only. Admins can edit job info.
           </p>
         ) : null}
 
@@ -312,6 +323,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
             <label className="label">Owner</label>
             <input className="input" disabled={!isAdmin} value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} />
           </div>
+
           <div>
             <label className="label">Site Contact</label>
             <input className="input" disabled={!isAdmin} value={form.site_contact} onChange={(e) => setForm({ ...form, site_contact: e.target.value })} />
@@ -329,7 +341,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
               </div>
 
               {form.dropbox_url ? (
-                <button className="btn-secondary" onClick={openDropbox}>
+                <button className="btn-secondary" onClick={() => openDropbox()}>
                   Test Link
                 </button>
               ) : null}
@@ -394,13 +406,65 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
         <textarea className="input min-h-32" disabled={!isAdmin} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
         {isAdmin ? (
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4">
             <button className="btn-primary" disabled={saving} onClick={saveJob}>
               {saving ? "Saving..." : "Save Job"}
             </button>
           </div>
         ) : null}
       </section>
+    );
+  }
+
+  return (
+    <section className="mt-4">
+      <div className="card mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-black">Jobs</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Select a job. Job info opens directly beside the selected card.
+            </p>
+          </div>
+
+          {isAdmin ? (
+            <button className="btn-primary" onClick={selectNewJob}>
+              New Job
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {selectedId === "new" ? (
+        <div className="mb-3 grid gap-4 lg:grid-cols-[420px_1fr]">
+          <div className="rounded-2xl border-2 border-dashed bg-white p-4 text-sm font-bold text-slate-500">
+            New job record
+          </div>
+          <JobEditor />
+        </div>
+      ) : null}
+
+      <div className="space-y-3">
+        {jobs.length === 0 ? (
+          <div className="card">
+            <p className="text-sm text-slate-500">No jobs yet.</p>
+          </div>
+        ) : (
+          jobs.map((job) => (
+            <div key={job.id} className="grid gap-4 lg:grid-cols-[420px_1fr]">
+              <div>
+                <JobCard job={job} />
+              </div>
+
+              {selectedId === job.id ? (
+                <JobEditor />
+              ) : (
+                <div className="hidden lg:block" />
+              )}
+            </div>
+          ))
+        )}
+      </div>
     </section>
   );
 }
