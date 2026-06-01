@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Equipment, Job } from "@/lib/types";
-import { EQUIPMENT_STATUSES, EQUIPMENT_TYPES } from "@/lib/equipment-types";
+import { EQUIPMENT_STATUSES, EQUIPMENT_TYPES, OWNERSHIP_TYPES, equipmentTypeStyle } from "@/lib/equipment-types";
 
 type Props = {
   equipment: Equipment[];
@@ -16,6 +16,10 @@ const emptyForm = {
   equipment_number: "",
   equipment_type: "",
   status: "Active",
+  ownership_type: "Owned",
+  rental_company: "",
+  rental_return_date: "",
+  rental_notes: "",
   current_job_id: "",
   current_site: "",
   photo_url: "",
@@ -41,6 +45,10 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
           equipment_number: selected.equipment_number ?? "",
           equipment_type: selected.equipment_type ?? "",
           status: selected.status ?? "Active",
+          ownership_type: selected.ownership_type ?? "Owned",
+          rental_company: selected.rental_company ?? "",
+          rental_return_date: selected.rental_return_date ?? "",
+          rental_notes: selected.rental_notes ?? "",
           current_job_id: selected.current_job_id ?? "",
           current_site: selected.current_site ?? "",
           photo_url: selected.photo_url ?? "",
@@ -71,6 +79,10 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
       equipment_number: item.equipment_number ?? "",
       equipment_type: item.equipment_type ?? "",
       status: item.status ?? "Active",
+      ownership_type: item.ownership_type ?? "Owned",
+      rental_company: item.rental_company ?? "",
+      rental_return_date: item.rental_return_date ?? "",
+      rental_notes: item.rental_notes ?? "",
       current_job_id: item.current_job_id ?? "",
       current_site: item.current_site ?? "",
       photo_url: item.photo_url ?? "",
@@ -93,7 +105,10 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
         current_job_id: form.current_job_id || null,
         current_site: form.current_site || null,
         photo_url: form.photo_url || null,
-        notes: form.notes || null
+        notes: form.notes || null,
+        rental_company: form.rental_company || null,
+        rental_return_date: form.rental_return_date || null,
+        rental_notes: form.rental_notes || null
       };
 
       const res = await fetch(url, {
@@ -152,31 +167,36 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
           {equipment.length === 0 ? (
             <p className="text-sm text-slate-500">No equipment yet.</p>
           ) : (
-            equipment.map((item) => (
-              <button
-                key={item.id}
-                className={`flex w-full gap-3 rounded-2xl border p-3 text-left ${selectedId === item.id ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white"}`}
-                onClick={() => selectItem(item)}
-              >
-                <div className="h-16 w-20 shrink-0 overflow-hidden rounded-xl border bg-white">
-                  {item.photo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={imagePath(item.photo_url)} alt={item.name} className="h-full w-full object-contain" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs font-black text-slate-400">NO IMG</div>
-                  )}
-                </div>
-
-                <div className="min-w-0">
-                  <div className="font-black">{item.name}</div>
-                  <div className="text-xs text-slate-500">{item.equipment_type ?? "Uncategorized"} • #{item.equipment_number ?? "—"}</div>
-                  <div className="text-xs font-bold text-slate-700">{item.status}</div>
-                  <div className="text-xs text-slate-500">
-                    {item.current_job_id ? jobNameById.get(item.current_job_id) ?? "Assigned job" : item.current_site || "Unassigned"}
+            equipment.map((item) => {
+              const style = equipmentTypeStyle(item.equipment_type, item.ownership_type);
+              return (
+                <button
+                  key={item.id}
+                  className={`flex w-full gap-3 rounded-2xl border p-3 text-left ${selectedId === item.id ? "ring-2 ring-blue-600" : ""} ${style.cardClass}`}
+                  onClick={() => selectItem(item)}
+                >
+                  <div className="h-16 w-20 shrink-0 overflow-hidden rounded-xl border bg-white">
+                    {item.photo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imagePath(item.photo_url)} alt={item.name} className="h-full w-full object-contain" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs font-black text-slate-400">NO IMG</div>
+                    )}
                   </div>
-                </div>
-              </button>
-            ))
+
+                  <div className="min-w-0">
+                    <div className="font-black">{item.name}</div>
+                    <div className="text-xs text-slate-500">#{item.equipment_number ?? "—"}</div>
+                    <div className={`mt-1 inline-block rounded-full px-2 py-1 text-[10px] font-black uppercase ${style.badgeClass}`}>
+                      {item.ownership_type === "Rental" ? "Rental" : item.equipment_type ?? "Other"}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {item.current_job_id ? jobNameById.get(item.current_job_id) ?? "Assigned job" : item.current_site || "Unassigned"}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
           )}
         </div>
       </aside>
@@ -216,13 +236,36 @@ export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }
             </select>
           </div>
           <div>
-            <label className="label">Current Job</label>
-            <select className="input" disabled={!isAdmin} value={form.current_job_id} onChange={(event) => setForm({ ...form, current_job_id: event.target.value, current_site: "" })}>
-              <option value="">Unassigned / Yard / Other Site</option>
-              {jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
+            <label className="label">Ownership</label>
+            <select className="input" disabled={!isAdmin} value={form.ownership_type} onChange={(event) => setForm({ ...form, ownership_type: event.target.value })}>
+              {OWNERSHIP_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
             </select>
           </div>
         </div>
+
+        {form.ownership_type === "Rental" ? (
+          <div className="mt-3 rounded-2xl border border-pink-300 bg-pink-50 p-3">
+            <div className="text-sm font-black text-pink-800">Rental Details</div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label">Rental Company</label>
+                <input className="input" disabled={!isAdmin} value={form.rental_company} onChange={(event) => setForm({ ...form, rental_company: event.target.value })} />
+              </div>
+              <div>
+                <label className="label">Return Date</label>
+                <input className="input" type="date" disabled={!isAdmin} value={form.rental_return_date} onChange={(event) => setForm({ ...form, rental_return_date: event.target.value })} />
+              </div>
+            </div>
+            <label className="label">Rental Notes</label>
+            <input className="input" disabled={!isAdmin} value={form.rental_notes} onChange={(event) => setForm({ ...form, rental_notes: event.target.value })} />
+          </div>
+        ) : null}
+
+        <label className="label">Current Job</label>
+        <select className="input" disabled={!isAdmin} value={form.current_job_id} onChange={(event) => setForm({ ...form, current_job_id: event.target.value, current_site: "" })}>
+          <option value="">Unassigned / Yard / Other Site</option>
+          {jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
+        </select>
 
         <label className="label">Current Site Text</label>
         <input className="input" disabled={!isAdmin || Boolean(form.current_job_id)} placeholder="Yard, Shop, Pit, Dump, etc." value={form.current_site} onChange={(event) => setForm({ ...form, current_site: event.target.value })} />
