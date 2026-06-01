@@ -32,6 +32,8 @@ const emptyForm = {
   custom_fields: {} as Record<string, string>
 };
 
+type ListMode = "active" | "assigned" | "waiting" | "completed" | "all";
+
 function getDefaultTitle(workType: string) {
   switch (workType) {
     case "Survey": return "Survey Request";
@@ -76,13 +78,22 @@ function appendUpdate(existingDescription: string, label: string, note: string) 
   return `${existingDescription}${divider}[${label} - ${timestamp}]\n${cleanNote}`;
 }
 
+function isActiveStatus(status: string) {
+  return ["New", "Assigned", "In Progress"].includes(status);
+}
+
+function isCompletedStatus(status: string) {
+  return ["Complete", "Closed"].includes(status);
+}
+
 export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdmin, onWorkOrdersChanged }: Props) {
   const [selectedId, setSelectedId] = useState<string | "new">(workOrders[0]?.id ?? "new");
   const selected = workOrders.find((order) => order.id === selectedId);
   const [saving, setSaving] = useState(false);
   const [quickSaving, setQuickSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [filter, setFilter] = useState("All");
+  const [listMode, setListMode] = useState<ListMode>("active");
+  const [typeFilter, setTypeFilter] = useState("All");
   const [updateNote, setUpdateNote] = useState("");
   const [sendBackNote, setSendBackNote] = useState("");
 
@@ -106,14 +117,48 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
   const jobNameById = useMemo(() => new Map(jobs.map((job) => [job.id, job.name])), [jobs]);
   const personNameById = useMemo(() => new Map(personnel.map((p) => [p.id, p.full_name])), [personnel]);
 
-  const queueCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const type of WORK_ORDER_TYPES) counts.set(type, 0);
-    for (const order of workOrders) counts.set(order.work_type, (counts.get(order.work_type) ?? 0) + 1);
-    return counts;
+  const counts = useMemo(() => {
+    return {
+      active: workOrders.filter((order) => isActiveStatus(order.status)).length,
+      assigned: workOrders.filter((order) => order.status === "Assigned" || order.status === "In Progress").length,
+      waiting: workOrders.filter((order) => order.status === "Waiting").length,
+      completed: workOrders.filter((order) => isCompletedStatus(order.status)).length,
+      all: workOrders.length
+    };
   }, [workOrders]);
 
-  const filteredOrders = workOrders.filter((order) => filter === "All" || order.work_type === filter);
+  const queueCounts = useMemo(() => {
+    const countMap = new Map<string, number>();
+    for (const type of WORK_ORDER_TYPES) countMap.set(type, 0);
+    for (const order of workOrders) countMap.set(order.work_type, (countMap.get(order.work_type) ?? 0) + 1);
+    return countMap;
+  }, [workOrders]);
+
+  const filteredOrders = useMemo(() => {
+    let orders = [...workOrders];
+
+    if (listMode === "active") {
+      orders = orders.filter((order) => isActiveStatus(order.status));
+    }
+
+    if (listMode === "assigned") {
+      orders = orders.filter((order) => order.status === "Assigned" || order.status === "In Progress");
+    }
+
+    if (listMode === "waiting") {
+      orders = orders.filter((order) => order.status === "Waiting");
+    }
+
+    if (listMode === "completed") {
+      orders = orders.filter((order) => isCompletedStatus(order.status));
+    }
+
+    if (typeFilter !== "All") {
+      orders = orders.filter((order) => order.work_type === typeFilter);
+    }
+
+    return orders;
+  }, [workOrders, listMode, typeFilter]);
 
   const assignablePersonnel = useMemo(() => {
     const department = routeDepartment(form.work_type);
@@ -200,11 +245,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error ?? "Update failed.");
 
-      setForm({
-        ...form,
-        ...overrides
-      });
-
+      setForm({ ...form, ...overrides });
       await onWorkOrdersChanged();
       alert(successMessage);
     } catch (err) {
@@ -307,6 +348,21 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
         status: "Complete"
       },
       "Marked complete."
+    );
+  }
+
+  async function reopenWorkOrder() {
+    if (selectedId === "new") return alert("Save the work order first.");
+
+    const nextDescription = appendUpdate(form.description, "Reopened", updateNote || "Work order reopened.");
+    setUpdateNote("");
+
+    await savePayload(
+      {
+        description: nextDescription,
+        status: "In Progress"
+      },
+      "Work order reopened."
     );
   }
 
@@ -415,9 +471,9 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
 
     return (
       <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-3">
-        <h3 className="font-black">Update / Complete</h3>
+        <h3 className="font-black">Work Order Actions</h3>
 
-        <label className="label">Update Note</label>
+        <label className="label">Update / Completion Note</label>
         <textarea
           className="input min-h-20 bg-white"
           placeholder="Type progress update, completion note, or what was done..."
@@ -430,29 +486,37 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
             Add Update
           </button>
 
-          <button className="btn-primary" disabled={quickSaving} onClick={markComplete}>
-            Mark Complete
-          </button>
+          {isCompletedStatus(form.status) ? (
+            <button className="btn-primary" disabled={quickSaving} onClick={reopenWorkOrder}>
+              Reopen
+            </button>
+          ) : (
+            <button className="btn-primary" disabled={quickSaving} onClick={markComplete}>
+              Mark Complete
+            </button>
+          )}
         </div>
 
-        <div className="mt-4 rounded-2xl border border-yellow-300 bg-yellow-50 p-3">
-          <h4 className="font-black text-yellow-900">Send Back</h4>
-          <p className="mt-1 text-xs font-bold text-yellow-900">
-            Use this when the request needs more info, has a problem, or should go back to the office/requester.
-          </p>
+        {!isCompletedStatus(form.status) ? (
+          <div className="mt-4 rounded-2xl border border-yellow-300 bg-yellow-50 p-3">
+            <h4 className="font-black text-yellow-900">Send Back</h4>
+            <p className="mt-1 text-xs font-bold text-yellow-900">
+              Use this when the request needs more info or has a problem.
+            </p>
 
-          <label className="label">Reason</label>
-          <textarea
-            className="input min-h-20 bg-white"
-            placeholder="Example: Need plan sheet, wrong equipment selected, missing location..."
-            value={sendBackNote}
-            onChange={(e) => setSendBackNote(e.target.value)}
-          />
+            <label className="label">Reason</label>
+            <textarea
+              className="input min-h-20 bg-white"
+              placeholder="Need plan sheet, wrong equipment selected, missing location..."
+              value={sendBackNote}
+              onChange={(e) => setSendBackNote(e.target.value)}
+            />
 
-          <button className="btn-secondary mt-3" disabled={quickSaving} onClick={sendBack}>
-            Send Back
-          </button>
-        </div>
+            <button className="btn-secondary mt-3" disabled={quickSaving} onClick={sendBack}>
+              Send Back
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -614,23 +678,45 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     );
   }
 
+  function ModeButton({ mode, label, count }: { mode: ListMode; label: string; count: number }) {
+    return (
+      <button
+        className={listMode === mode ? "btn-primary" : "btn-secondary"}
+        onClick={() => setListMode(mode)}
+      >
+        {label} ({count})
+      </button>
+    );
+  }
+
   return (
-    <section className="mt-4 grid gap-4 lg:grid-cols-[420px_1fr]">
+    <section className="mt-4 grid gap-4 lg:grid-cols-[430px_1fr]">
       <aside className="card">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-2xl font-black">Work Orders</h2>
           <button className="btn-primary" onClick={() => selectOrder("new")}>New</button>
         </div>
 
-        <label className="label">Queue</label>
-        <select className="input" value={filter} onChange={(event) => setFilter(event.target.value)}>
-          <option value="All">All Work Orders ({workOrders.length})</option>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <ModeButton mode="active" label="Active" count={counts.active} />
+          <ModeButton mode="assigned" label="Assigned" count={counts.assigned} />
+          <ModeButton mode="waiting" label="Waiting" count={counts.waiting} />
+          <ModeButton mode="completed" label="Completed" count={counts.completed} />
+        </div>
+
+        <div className="mt-2">
+          <ModeButton mode="all" label="All" count={counts.all} />
+        </div>
+
+        <label className="label">Type Filter</label>
+        <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+          <option value="All">All Types</option>
           {WORK_ORDER_TYPES.map((type) => <option key={type} value={type}>{type} ({queueCounts.get(type) ?? 0})</option>)}
         </select>
 
         <div className="mt-4 space-y-3">
           {filteredOrders.length === 0 ? (
-            <p className="text-sm text-slate-500">No work orders in this queue.</p>
+            <p className="text-sm text-slate-500">No work orders in this list.</p>
           ) : (
             filteredOrders.map((order) => (
               <button
