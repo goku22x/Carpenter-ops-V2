@@ -8,6 +8,7 @@ import { EquipmentModule } from "@/components/equipment/equipment-module";
 import { EquipmentBoard } from "@/components/equipment/equipment-board";
 import { PersonnelModule } from "@/components/personnel/personnel-module";
 import { WorkOrdersModule } from "@/components/work-orders/work-orders-module";
+import { UserWorkCalendar } from "@/components/dashboard/user-work-calendar";
 
 type Props = {
   userEmail: string;
@@ -20,7 +21,7 @@ type Props = {
 
 export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment, initialPersonnel, initialWorkOrders }: Props) {
   const supabase = createClient();
-  const [view, setView] = useState<"jobs" | "personnel" | "equipment" | "work" | "active" | "operations">("jobs");
+  const [view, setView] = useState<"home" | "jobs" | "personnel" | "equipment" | "work" | "operations">("home");
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [equipment, setEquipment] = useState<Equipment[]>(initialEquipment);
   const [personnel, setPersonnel] = useState<Personnel[]>(initialPersonnel);
@@ -75,7 +76,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
     <main className="mx-auto max-w-[1600px] p-4">
       <header className="rounded-3xl border-b-8 border-carpenter-red bg-carpenter-black p-5 text-white shadow-xl">
         <h1 className="text-3xl font-black">Carpenter Operations Hub</h1>
-        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Work Orders</p>
+        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Personal work calendar</p>
       </header>
 
       <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -85,8 +86,9 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Jobs</button>
+          <button className={view === "home" ? "btn-primary" : "btn-secondary"} onClick={() => setView("home")}>My Calendar</button>
           <button className={view === "work" ? "btn-primary" : "btn-secondary"} onClick={() => setView("work")}>Work Orders</button>
+          <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Jobs</button>
           <button className={view === "personnel" ? "btn-primary" : "btn-secondary"} onClick={() => setView("personnel")}>Personnel</button>
           <button className={view === "equipment" ? "btn-primary" : "btn-secondary"} onClick={() => setView("equipment")}>Equipment</button>
           <button className={view === "operations" ? "btn-primary" : "btn-secondary"} onClick={() => setView("operations")}>Operations Board</button>
@@ -95,6 +97,16 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
           </button>
         </div>
       </section>
+
+      {view === "home" ? (
+        <UserWorkCalendar
+          profile={profile}
+          personnel={personnel}
+          jobs={jobs}
+          workOrders={workOrders}
+          onOpenWorkOrders={() => setView("work")}
+        />
+      ) : null}
 
       {view === "jobs" ? (
         <JobsModule
