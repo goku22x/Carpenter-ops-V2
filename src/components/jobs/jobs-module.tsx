@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { Job, JobPhase, PhaseKey } from "@/lib/types";
-import { PHASES } from "@/lib/phases";
+import { useState } from "react";
+import type { Job, JobPhase } from "@/lib/types";
+import { DEFAULT_JOB_PHASES, phaseColorClass } from "@/lib/phases";
 
 type Props = {
   initialJobs: Job[];
@@ -10,31 +10,39 @@ type Props = {
   onJobsChanged?: () => Promise<void> | void;
 };
 
-type PhaseForm = Record<PhaseKey, { start_date: string | null; end_date: string | null; progress_percent: number | null }>;
+type PhaseForm = {
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  progress_percent: number | null;
+  sort_order: number;
+};
 
-function emptyPhases(): PhaseForm {
-  return {
-    earthwork: { start_date: null, end_date: null, progress_percent: 0 },
-    storm_drain: { start_date: null, end_date: null, progress_percent: 0 },
-    sewer: { start_date: null, end_date: null, progress_percent: 0 },
-    water: { start_date: null, end_date: null, progress_percent: 0 },
-    electrical: { start_date: null, end_date: null, progress_percent: 0 },
-    curb: { start_date: null, end_date: null, progress_percent: 0 }
-  };
+function defaultPhaseForm(): PhaseForm[] {
+  return DEFAULT_JOB_PHASES.map((name, index) => ({
+    name,
+    start_date: null,
+    end_date: null,
+    progress_percent: 0,
+    sort_order: index
+  }));
 }
 
-function phasesFromJob(job?: Job): PhaseForm {
-  const next = emptyPhases();
+function phasesFromJob(job?: Job): PhaseForm[] {
+  const phases = [...(job?.job_phases ?? [])]
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
-  for (const phase of job?.job_phases ?? []) {
-    next[phase.phase] = {
-      start_date: phase.start_date,
-      end_date: phase.end_date,
-      progress_percent: phase.progress_percent ?? 0
-    };
+  if (phases.length === 0) {
+    return defaultPhaseForm();
   }
 
-  return next;
+  return phases.map((phase, index) => ({
+    name: phase.name || phase.phase || `Phase ${index + 1}`,
+    start_date: phase.start_date,
+    end_date: phase.end_date,
+    progress_percent: phase.progress_percent ?? 0,
+    sort_order: phase.sort_order ?? index
+  }));
 }
 
 export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
@@ -64,7 +72,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
         site_contact: "",
         dropbox_url: "",
         notes: "",
-        phases: emptyPhases()
+        phases: defaultPhaseForm()
       });
       return;
     }
@@ -81,6 +89,45 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
     });
   }
 
+  function updatePhase(index: number, updates: Partial<PhaseForm>) {
+    setForm({
+      ...form,
+      phases: form.phases.map((phase, phaseIndex) =>
+        phaseIndex === index ? { ...phase, ...updates } : phase
+      )
+    });
+  }
+
+  function addPhase() {
+    setForm({
+      ...form,
+      phases: [
+        ...form.phases,
+        {
+          name: `Custom ${form.phases.length + 1}`,
+          start_date: null,
+          end_date: null,
+          progress_percent: 0,
+          sort_order: form.phases.length
+        }
+      ]
+    });
+  }
+
+  function deletePhase(index: number) {
+    if (form.phases.length <= 1) {
+      alert("A job needs at least one phase.");
+      return;
+    }
+
+    setForm({
+      ...form,
+      phases: form.phases
+        .filter((_, phaseIndex) => phaseIndex !== index)
+        .map((phase, phaseIndex) => ({ ...phase, sort_order: phaseIndex }))
+    });
+  }
+
   async function refreshJobs() {
     const res = await fetch("/api/jobs", { cache: "no-store" });
     if (!res.ok) throw new Error("Could not load jobs.");
@@ -93,6 +140,19 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
     if (!isAdmin) return alert("Admin only.");
     if (!form.name.trim()) return alert("Job name is required.");
 
+    const cleanPhases = form.phases
+      .map((phase, index) => ({
+        ...phase,
+        name: phase.name.trim(),
+        progress_percent: Math.max(0, Math.min(100, Number(phase.progress_percent) || 0)),
+        sort_order: index
+      }))
+      .filter((phase) => phase.name.length > 0);
+
+    if (cleanPhases.length === 0) {
+      return alert("At least one phase is required.");
+    }
+
     setSaving(true);
 
     try {
@@ -102,7 +162,10 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
+        body: JSON.stringify({
+          ...form,
+          phases: cleanPhases
+        })
       });
 
       const data = await res.json().catch(() => null);
@@ -152,16 +215,12 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
     }
   }
 
-  const selectedPhaseRecords = useMemo(() => {
-    const map = new Map<PhaseKey, JobPhase>();
-    for (const phase of selectedJob?.job_phases ?? []) {
-      map.set(phase.phase, phase);
-    }
-    return map;
-  }, [selectedJob]);
+  function getSortedPhases(job: Job) {
+    return [...(job.job_phases ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  }
 
   return (
-    <section className="mt-4 grid gap-4 lg:grid-cols-[380px_1fr]">
+    <section className="mt-4 grid gap-4 lg:grid-cols-[420px_1fr]">
       <aside className="card">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-2xl font-black">Jobs</h2>
@@ -180,16 +239,13 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
               >
                 <div className="font-black uppercase">{job.name}</div>
                 <div className="mt-2 grid grid-cols-2 gap-1">
-                  {PHASES.map((phase) => {
-                    const record = job.job_phases?.find((p) => p.phase === phase.key);
-                    return (
-                      <div key={phase.key} className={`${phase.className} rounded-lg px-2 py-1 text-[11px] font-black text-black`}>
-                        <div>{phase.label}</div>
-                        <div className="text-[10px] opacity-80">{record?.progress_percent ?? 0}%</div>
-                        <div className="text-[10px] opacity-70">{record?.start_date ?? "—"} → {record?.end_date ?? "—"}</div>
-                      </div>
-                    );
-                  })}
+                  {getSortedPhases(job).slice(0, 6).map((phase, index) => (
+                    <div key={`${job.id}-${phase.id ?? index}`} className={`${phaseColorClass(index)} rounded-lg px-2 py-1 text-[11px] font-black text-black`}>
+                      <div className="truncate">{phase.name || phase.phase}</div>
+                      <div className="text-[10px] opacity-80">{phase.progress_percent ?? 0}%</div>
+                      <div className="text-[10px] opacity-70">{phase.start_date ?? "—"} → {phase.end_date ?? "—"}</div>
+                    </div>
+                  ))}
                 </div>
               </button>
             ))
@@ -230,73 +286,78 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {PHASES.map((phase) => (
-            <div key={phase.key} className="phase-card">
-              <div className={`phase-title ${phase.className}`}>{phase.label}</div>
-              <div className="grid gap-3 p-3 sm:grid-cols-[1fr_1fr_110px]">
-                <div>
-                  <label className="label mt-0">Start</label>
-                  <input
-                    className="input"
-                    type="date"
-                    disabled={!isAdmin}
-                    value={form.phases[phase.key].start_date ?? ""}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        phases: {
-                          ...form.phases,
-                          [phase.key]: { ...form.phases[phase.key], start_date: e.target.value || null }
-                        }
-                      })
-                    }
-                  />
+        <div className="mt-4 rounded-2xl border bg-slate-50 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-xl font-black">Job Phases</h3>
+            {isAdmin ? <button className="btn-secondary" onClick={addPhase}>+ Add Phase</button> : null}
+          </div>
+
+          <div className="mt-3 space-y-3">
+            {form.phases.map((phase, index) => (
+              <div key={index} className="rounded-2xl border bg-white p-3">
+                <div className={`mb-3 rounded-xl px-3 py-2 text-center font-black text-black ${phaseColorClass(index)}`}>
+                  Phase {index + 1}
                 </div>
-                <div>
-                  <label className="label mt-0">End</label>
-                  <input
-                    className="input"
-                    type="date"
-                    disabled={!isAdmin}
-                    value={form.phases[phase.key].end_date ?? ""}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        phases: {
-                          ...form.phases,
-                          [phase.key]: { ...form.phases[phase.key], end_date: e.target.value || null }
-                        }
-                      })
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="label mt-0">% Complete</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    max={100}
-                    disabled={!isAdmin}
-                    value={form.phases[phase.key].progress_percent ?? 0}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        phases: {
-                          ...form.phases,
-                          [phase.key]: {
-                            ...form.phases[phase.key],
-                            progress_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0))
-                          }
-                        }
-                      })
-                    }
-                  />
+
+                <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_110px_auto]">
+                  <div>
+                    <label className="label mt-0">Phase Name</label>
+                    <input
+                      className="input"
+                      disabled={!isAdmin}
+                      value={phase.name}
+                      onChange={(e) => updatePhase(index, { name: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label mt-0">Start</label>
+                    <input
+                      className="input"
+                      type="date"
+                      disabled={!isAdmin}
+                      value={phase.start_date ?? ""}
+                      onChange={(e) => updatePhase(index, { start_date: e.target.value || null })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label mt-0">End</label>
+                    <input
+                      className="input"
+                      type="date"
+                      disabled={!isAdmin}
+                      value={phase.end_date ?? ""}
+                      onChange={(e) => updatePhase(index, { end_date: e.target.value || null })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label mt-0">%</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      max={100}
+                      disabled={!isAdmin}
+                      value={phase.progress_percent ?? 0}
+                      onChange={(e) =>
+                        updatePhase(index, {
+                          progress_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0))
+                        })
+                      }
+                    />
+                  </div>
+
+                  {isAdmin ? (
+                    <div className="flex items-end">
+                      <button className="btn-danger w-full" onClick={() => deletePhase(index)}>Delete</button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         <label className="label">Dropbox Link</label>
