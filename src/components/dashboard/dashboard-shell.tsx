@@ -2,22 +2,25 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Equipment, Job, Profile } from "@/lib/types";
+import type { Equipment, Job, Personnel, Profile } from "@/lib/types";
 import { JobsModule } from "@/components/jobs/jobs-module";
 import { EquipmentModule } from "@/components/equipment/equipment-module";
 import { EquipmentBoard } from "@/components/equipment/equipment-board";
+import { PersonnelModule } from "@/components/personnel/personnel-module";
 
 type Props = {
   userEmail: string;
   profile: Profile;
   initialJobs: Job[];
   initialEquipment: Equipment[];
+  initialPersonnel: Personnel[];
 };
 
-export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment }: Props) {
+export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment, initialPersonnel }: Props) {
   const supabase = createClient();
-  const [view, setView] = useState<"jobs" | "equipment" | "active" | "operations">("jobs");
+  const [view, setView] = useState<"jobs" | "personnel" | "equipment" | "active" | "operations">("jobs");
   const [equipment, setEquipment] = useState<Equipment[]>(initialEquipment);
+  const [personnel, setPersonnel] = useState<Personnel[]>(initialPersonnel);
   const [loggingOut, setLoggingOut] = useState(false);
 
   async function handleLogout() {
@@ -44,11 +47,23 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
     return data as Equipment[];
   }
 
+  async function refreshPersonnel() {
+    const res = await fetch("/api/personnel", { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Could not refresh personnel.");
+    }
+
+    setPersonnel(data);
+    return data as Personnel[];
+  }
+
   return (
     <main className="mx-auto max-w-[1600px] p-4">
       <header className="rounded-3xl border-b-8 border-carpenter-red bg-carpenter-black p-5 text-white shadow-xl">
         <h1 className="text-3xl font-black">Carpenter Operations Hub</h1>
-        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Equipment foundation</p>
+        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Personnel foundation</p>
       </header>
 
       <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -59,6 +74,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
 
         <div className="flex flex-wrap gap-2">
           <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Jobs</button>
+          <button className={view === "personnel" ? "btn-primary" : "btn-secondary"} onClick={() => setView("personnel")}>Personnel</button>
           <button className={view === "equipment" ? "btn-primary" : "btn-secondary"} onClick={() => setView("equipment")}>Equipment</button>
           <button className={view === "active" ? "btn-primary" : "btn-secondary"} onClick={() => setView("active")}>Active Work</button>
           <button className={view === "operations" ? "btn-primary" : "btn-secondary"} onClick={() => setView("operations")}>Operations Board</button>
@@ -70,6 +86,16 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
 
       {view === "jobs" ? (
         <JobsModule initialJobs={initialJobs} isAdmin={profile.role === "admin"} />
+      ) : null}
+
+      {view === "personnel" ? (
+        <PersonnelModule
+          personnel={personnel}
+          isAdmin={profile.role === "admin"}
+          onPersonnelChanged={async () => {
+            await refreshPersonnel();
+          }}
+        />
       ) : null}
 
       {view === "equipment" ? (
@@ -90,7 +116,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       {view === "active" ? (
         <section className="card mt-4">
           <h2 className="text-2xl font-black">Active Work</h2>
-          <p className="mt-2 text-sm text-slate-500">This module comes next after Equipment is solid.</p>
+          <p className="mt-2 text-sm text-slate-500">This module comes next after Personnel is solid.</p>
         </section>
       ) : null}
     </main>
