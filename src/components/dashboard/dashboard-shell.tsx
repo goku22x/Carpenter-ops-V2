@@ -30,7 +30,6 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
 
   async function handleLogout() {
     setLoggingOut(true);
-
     try {
       await supabase.auth.signOut();
       window.location.href = "/login";
@@ -76,7 +75,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
     <main className="mx-auto max-w-[1600px] p-4">
       <header className="rounded-3xl border-b-8 border-carpenter-red bg-carpenter-black p-5 text-white shadow-xl">
         <h1 className="text-3xl font-black">Carpenter Operations Hub</h1>
-        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Personal work calendar</p>
+        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Operations board workflow</p>
       </header>
 
       <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -87,28 +86,22 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
 
         <div className="flex flex-wrap gap-2">
           <button className={view === "home" ? "btn-primary" : "btn-secondary"} onClick={() => setView("home")}>My Calendar</button>
+          <button className={view === "operations" ? "btn-primary" : "btn-secondary"} onClick={() => setView("operations")}>Operations Board</button>
           <button className={view === "work" ? "btn-primary" : "btn-secondary"} onClick={() => setView("work")}>Work Orders</button>
-          <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Jobs</button>
+          {profile.role === "admin" ? (
+            <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Job Setup</button>
+          ) : null}
           <button className={view === "personnel" ? "btn-primary" : "btn-secondary"} onClick={() => setView("personnel")}>Personnel</button>
           <button className={view === "equipment" ? "btn-primary" : "btn-secondary"} onClick={() => setView("equipment")}>Equipment</button>
-          <button className={view === "operations" ? "btn-primary" : "btn-secondary"} onClick={() => setView("operations")}>Operations Board</button>
-          <button className="btn-secondary" disabled={loggingOut} onClick={handleLogout}>
-            {loggingOut ? "Logging out..." : "Logout"}
-          </button>
+          <button className="btn-secondary" disabled={loggingOut} onClick={handleLogout}>{loggingOut ? "Logging out..." : "Logout"}</button>
         </div>
       </section>
 
       {view === "home" ? (
-        <UserWorkCalendar
-          profile={profile}
-          personnel={personnel}
-          jobs={jobs}
-          workOrders={workOrders}
-          onOpenWorkOrders={() => setView("work")}
-        />
+        <UserWorkCalendar profile={profile} personnel={personnel} jobs={jobs} workOrders={workOrders} onOpenWorkOrders={() => setView("work")} />
       ) : null}
 
-      {view === "jobs" ? (
+      {view === "jobs" && profile.role === "admin" ? (
         <JobsModule
           initialJobs={jobs}
           isAdmin={profile.role === "admin"}
@@ -120,41 +113,19 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       ) : null}
 
       {view === "work" ? (
-        <WorkOrdersModule
-          workOrders={workOrders}
-          jobs={jobs}
-          equipment={equipment}
-          personnel={personnel}
-          isAdmin={profile.role === "admin"}
-          onWorkOrdersChanged={async () => {
-            await refreshWorkOrders();
-          }}
-        />
+        <WorkOrdersModule workOrders={workOrders} jobs={jobs} equipment={equipment} personnel={personnel} isAdmin={profile.role === "admin"} onWorkOrdersChanged={refreshWorkOrders} />
       ) : null}
 
       {view === "personnel" ? (
-        <PersonnelModule
-          personnel={personnel}
-          isAdmin={profile.role === "admin"}
-          onPersonnelChanged={async () => {
-            await refreshPersonnel();
-          }}
-        />
+        <PersonnelModule personnel={personnel} isAdmin={profile.role === "admin"} onPersonnelChanged={refreshPersonnel} />
       ) : null}
 
       {view === "equipment" ? (
-        <EquipmentModule
-          equipment={equipment}
-          jobs={jobs}
-          isAdmin={profile.role === "admin"}
-          onEquipmentChanged={async () => {
-            await refreshEquipment();
-          }}
-        />
+        <EquipmentModule equipment={equipment} jobs={jobs} isAdmin={profile.role === "admin"} onEquipmentChanged={refreshEquipment} />
       ) : null}
 
       {view === "operations" ? (
-        <EquipmentBoard equipment={equipment} jobs={jobs} />
+        <EquipmentBoard equipment={equipment} jobs={jobs} personnel={personnel} workOrders={workOrders} />
       ) : null}
     </main>
   );
