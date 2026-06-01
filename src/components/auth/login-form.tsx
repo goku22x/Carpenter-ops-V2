@@ -27,7 +27,7 @@ export function LoginForm() {
         if (error) throw error;
 
         if (data.session) {
-          window.location.href = "/dashboard";
+          window.location.assign("/dashboard");
           return;
         }
 
@@ -36,14 +36,18 @@ export function LoginForm() {
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (error) throw error;
 
-      window.location.href = "/dashboard";
+      if (!data.session) {
+        throw new Error("Sign-in succeeded but no session was returned.");
+      }
+
+      window.location.assign("/dashboard");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Authentication failed.");
     } finally {
