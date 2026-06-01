@@ -32,15 +32,6 @@ const emptyForm = {
   custom_fields: {} as Record<string, string>
 };
 
-const TRUCK_TYPES = [
-  "Quad Axle Dump Truck",
-  "Triaxle Dump Truck",
-  "Dump Truck",
-  "Lowboy Truck",
-  "Lowboy Trailer",
-  "Other"
-];
-
 function getDefaultTitle(workType: string) {
   switch (workType) {
     case "Survey": return "Survey Request";
@@ -50,6 +41,18 @@ function getDefaultTitle(workType: string) {
     case "Foreman Assignment": return "Foreman Assignment";
     case "Office": return "Office Request";
     default: return "General Work Order";
+  }
+}
+
+function routeDepartment(workType: string) {
+  switch (workType) {
+    case "Survey": return "Survey";
+    case "Maintenance": return "Maintenance";
+    case "Mobilization": return "Mobilization";
+    case "Trucking": return "Trucks";
+    case "Foreman Assignment": return "Earthwork";
+    case "Office": return "Office";
+    default: return "Other";
   }
 }
 
@@ -83,7 +86,24 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
 
   const jobNameById = useMemo(() => new Map(jobs.map((job) => [job.id, job.name])), [jobs]);
   const personNameById = useMemo(() => new Map(personnel.map((p) => [p.id, p.full_name])), [personnel]);
+
+  const queueCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const type of WORK_ORDER_TYPES) counts.set(type, 0);
+    for (const order of workOrders) counts.set(order.work_type, (counts.get(order.work_type) ?? 0) + 1);
+    return counts;
+  }, [workOrders]);
+
   const filteredOrders = workOrders.filter((order) => filter === "All" || order.work_type === filter);
+
+  const assignablePersonnel = useMemo(() => {
+    const department = routeDepartment(form.work_type);
+    return personnel.filter((person) => {
+      if (!person.active) return false;
+      if (department === "Other") return true;
+      return person.department === department || person.position === department;
+    });
+  }, [personnel, form.work_type]);
 
   function selectOrder(order: WorkOrder | "new") {
     if (order === "new") {
@@ -138,42 +158,28 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     let description = form.description.trim();
 
     if (form.work_type === "Survey") {
-      if (!form.job_id || !form.custom_fields.survey_type || !description) {
-        return alert("Survey needs job, survey type, and location/details.");
-      }
+      if (!form.job_id || !form.custom_fields.survey_type || !description) return alert("Survey needs job, survey type, and location/details.");
     }
-
     if (form.work_type === "Maintenance") {
-      if (!form.related_equipment_id || !description) {
-        return alert("Maintenance needs equipment and issue.");
-      }
+      if (!form.related_equipment_id || !description) return alert("Maintenance needs equipment and issue.");
     }
-
     if (form.work_type === "Mobilization") {
-      if (!form.job_id || !form.custom_fields.equipment_type_needed) {
-        return alert("Mobilization needs job and equipment type.");
-      }
+      if (!form.job_id || !form.custom_fields.equipment_type_needed) return alert("Mobilization needs job and equipment type.");
       description = description || `${form.custom_fields.equipment_type_needed} needed`;
     }
-
     if (form.work_type === "Trucking") {
-      if (!form.job_id || !form.custom_fields.truck_count || !form.custom_fields.load_count) {
-        return alert("Trucking needs job, # trucks, and # loads.");
-      }
+      if (!form.job_id || !form.custom_fields.truck_count || !form.custom_fields.load_count) return alert("Trucking needs job, # trucks, and # loads.");
       description = description || `${form.custom_fields.truck_count} trucks / ${form.custom_fields.load_count} loads`;
     }
-
     if (form.work_type === "Foreman Assignment") {
       if (!form.job_id) return alert("Foreman assignment needs a job.");
       description = description || form.custom_fields.foreman_name || "Assign foreman";
     }
-
     if (form.work_type === "Office") {
       if (!description) return alert("Office request needs what you need.");
     }
 
     setSaving(true);
-
     try {
       const method = selectedId === "new" ? "POST" : "PATCH";
       const url = selectedId === "new" ? "/api/work-orders" : `/api/work-orders/${selectedId}`;
@@ -183,9 +189,10 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
         title,
         description,
         job_id: form.job_id || null,
-        assigned_personnel_id: form.assigned_personnel_id || null,
+        assigned_personnel_id: isAdmin ? form.assigned_personnel_id || null : null,
         related_equipment_id: form.related_equipment_id || null,
-        due_date: form.due_date || null
+        due_date: form.due_date || null,
+        status: isAdmin ? form.status : "New"
       };
 
       const res = await fetch(url, {
@@ -199,7 +206,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
 
       await onWorkOrdersChanged();
       if (data?.id) setSelectedId(data.id);
-      alert("Work order saved.");
+      alert("Work order submitted.");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -215,7 +222,6 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     if (!ok) return;
 
     setDeleting(true);
-
     try {
       const res = await fetch(`/api/work-orders/${selectedId}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
@@ -263,25 +269,30 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     );
   }
 
-  function AssignToField() {
-    return (
-      <div>
-        <label className="label">Assign To</label>
-        <select className="input" value={form.assigned_personnel_id} onChange={(e) => setForm({ ...form, assigned_personnel_id: e.target.value })}>
-          <option value="">Unassigned</option>
-          {personnel.map((person) => <option key={person.id} value={person.id}>{person.full_name}</option>)}
-        </select>
-      </div>
-    );
-  }
+  function AdminControls() {
+    if (!isAdmin) return null;
 
-  function StatusField() {
     return (
-      <div>
-        <label className="label">Status</label>
-        <select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-          {WORK_ORDER_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
+      <div className="mt-4 rounded-2xl border border-slate-300 bg-slate-50 p-3">
+        <h3 className="font-black">Admin Controls</h3>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">Status</label>
+            <select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              {WORK_ORDER_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Assign To ({routeDepartment(form.work_type)})</label>
+            <select className="input" value={form.assigned_personnel_id} onChange={(e) => setForm({ ...form, assigned_personnel_id: e.target.value })}>
+              <option value="">Unassigned</option>
+              {assignablePersonnel.map((person) => <option key={person.id} value={person.id}>{person.full_name}</option>)}
+            </select>
+            {assignablePersonnel.length === 0 ? (
+              <p className="mt-1 text-xs font-bold text-red-700">No active personnel found for this department.</p>
+            ) : null}
+          </div>
+        </div>
       </div>
     );
   }
@@ -377,7 +388,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
       return (
         <div className="space-y-3">
           <JobField required />
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="label"># Trucks *</label>
               <input className="input text-base" placeholder="4" value={form.custom_fields.truck_count ?? ""} onChange={(e) => updateCustomField("truck_count", e.target.value)} />
@@ -385,17 +396,6 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
             <div>
               <label className="label"># Loads *</label>
               <input className="input text-base" placeholder="120" value={form.custom_fields.load_count ?? ""} onChange={(e) => updateCustomField("load_count", e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Truck Type</label>
-              <select className="input" value={form.custom_fields.truck_type ?? ""} onChange={(e) => updateCustomField("truck_type", e.target.value)}>
-                <option value="">Select</option>
-                <option value="Quad Axle Dump Truck">Quad</option>
-                <option value="Triaxle Dump Truck">Tri</option>
-                <option value="Dump Truck">Dump Truck</option>
-                <option value="Lowboy Truck">Lowboy</option>
-                <option value="Other">Other</option>
-              </select>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -407,7 +407,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
           </div>
           <div>
             <label className="label">Notes</label>
-            <textarea className="input min-h-20" placeholder="From/to, start time, haul notes." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <textarea className="input min-h-20" placeholder="Truck type, from/to, start time, haul notes." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
         </div>
       );
@@ -417,13 +417,6 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
       return (
         <div className="space-y-3">
           <JobField required />
-          <div>
-            <label className="label">Foreman</label>
-            <select className="input text-base" value={form.assigned_personnel_id} onChange={(e) => setForm({ ...form, assigned_personnel_id: e.target.value })}>
-              <option value="">Unassigned</option>
-              {personnel.map((person) => <option key={person.id} value={person.id}>{person.full_name}</option>)}
-            </select>
-          </div>
           <NeedByField />
           <div>
             <label className="label">Notes</label>
@@ -469,15 +462,15 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
           <button className="btn-primary" onClick={() => selectOrder("new")}>New</button>
         </div>
 
-        <label className="label">Filter</label>
+        <label className="label">Queue</label>
         <select className="input" value={filter} onChange={(event) => setFilter(event.target.value)}>
-          <option value="All">All</option>
-          {WORK_ORDER_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+          <option value="All">All Work Orders ({workOrders.length})</option>
+          {WORK_ORDER_TYPES.map((type) => <option key={type} value={type}>{type} ({queueCounts.get(type) ?? 0})</option>)}
         </select>
 
         <div className="mt-4 space-y-3">
           {filteredOrders.length === 0 ? (
-            <p className="text-sm text-slate-500">No work orders yet.</p>
+            <p className="text-sm text-slate-500">No work orders in this queue.</p>
           ) : (
             filteredOrders.map((order) => (
               <button
@@ -527,12 +520,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
           <FormBody />
         </div>
 
-        {isAdmin ? (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <StatusField />
-            <AssignToField />
-          </div>
-        ) : null}
+        <AdminControls />
 
         <div className="mt-4">
           <button className="btn-primary w-full sm:w-auto" disabled={saving} onClick={saveWorkOrder}>
