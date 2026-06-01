@@ -1,4 +1,10 @@
-export type PhaseKey = "earthwork" | "storm_drain" | "sewer" | "water";
+export type PhaseKey =
+  | "earthwork"
+  | "storm_drain"
+  | "sewer"
+  | "water"
+  | "electrical"
+  | "curb";
 
 export type JobPhase = {
   id: string;
@@ -6,6 +12,7 @@ export type JobPhase = {
   phase: PhaseKey;
   start_date: string | null;
   end_date: string | null;
+  progress_percent: number | null;
   status: string | null;
 };
 
