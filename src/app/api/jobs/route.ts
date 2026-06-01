@@ -18,6 +18,7 @@ async function getProfile(supabase: Awaited<ReturnType<typeof createClient>>) {
 
 export async function GET() {
   const supabase = await createClient();
+
   const { data, error } = await supabase
     .from("jobs")
     .select("*, job_phases(*)")
@@ -25,6 +26,7 @@ export async function GET() {
     .order("sort_order", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
   return NextResponse.json(data ?? []);
 }
 
@@ -48,7 +50,6 @@ export async function POST(request: Request) {
       site_contact: payload.site_contact || null,
       dropbox_url: payload.dropbox_url || null,
       notes: payload.notes || null,
-      sort_order: 9999,
       active: true
     })
     .select()
@@ -56,16 +57,22 @@ export async function POST(request: Request) {
 
   if (jobError) return NextResponse.json({ error: jobError.message }, { status: 400 });
 
-  const phaseRows = PHASES.map((phase) => ({
-    job_id: job.id,
-    phase: phase.key,
-    start_date: payload.phases[phase.key].start_date || null,
-    end_date: payload.phases[phase.key].end_date || null,
-    status: "Not Started"
-  }));
+  for (const phase of PHASES) {
+    const values = payload.phases[phase.key];
 
-  const { error: phaseError } = await supabase.from("job_phases").insert(phaseRows);
-  if (phaseError) return NextResponse.json({ error: phaseError.message }, { status: 400 });
+    const { error } = await supabase
+      .from("job_phases")
+      .insert({
+        job_id: job.id,
+        phase: phase.key,
+        start_date: values.start_date || null,
+        end_date: values.end_date || null,
+        progress_percent: values.progress_percent ?? 0,
+        status: "Not Started"
+      });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
   return NextResponse.json(job, { status: 201 });
 }

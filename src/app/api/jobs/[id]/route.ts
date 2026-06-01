@@ -55,6 +55,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         phase: phase.key,
         start_date: values.start_date || null,
         end_date: values.end_date || null,
+        progress_percent: values.progress_percent ?? 0,
         status: "Not Started"
       }, { onConflict: "job_id,phase" });
 
@@ -73,7 +74,6 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     return NextResponse.json({ error: "Admin only." }, { status: 403 });
   }
 
-  // Unassign equipment first so deleting a job does not strand equipment references.
   const { error: unassignError } = await supabase
     .from("equipment")
     .update({
