@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Job, Personnel, Profile, WorkOrder } from "@/lib/types";
 import { getWorkOrderTypeColor } from "@/lib/work-orders";
+import { formatDate } from "@/lib/date-format";
 
 type Props = {
   profile: Profile;
@@ -217,7 +218,7 @@ export function UserWorkCalendar({ profile, personnel, jobs, workOrders, onOpenW
                       key={order.id}
                       className={`block w-full truncate rounded-lg border px-2 py-1 text-left text-[11px] font-black ${getWorkOrderTypeColor(order.work_type)}`}
                       onClick={onOpenWorkOrders}
-                      title={order.description ?? order.title}
+                      title={`${order.description ?? order.title} | Due ${formatDate(order.due_date)}`}
                     >
                       {order.work_type}: {order.job_id ? jobNameById.get(order.job_id) ?? "Job" : "No job"}
                     </button>
