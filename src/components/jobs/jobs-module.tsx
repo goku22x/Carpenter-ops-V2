@@ -10,25 +10,30 @@ type Props = {
   onJobsChanged?: () => Promise<void> | void;
 };
 
-type PhaseForm = Record<PhaseKey, { start_date: string | null; end_date: string | null }>;
+type PhaseForm = Record<PhaseKey, { start_date: string | null; end_date: string | null; progress_percent: number | null }>;
 
 function emptyPhases(): PhaseForm {
   return {
-    earthwork: { start_date: null, end_date: null },
-    storm_drain: { start_date: null, end_date: null },
-    sewer: { start_date: null, end_date: null },
-    water: { start_date: null, end_date: null }
+    earthwork: { start_date: null, end_date: null, progress_percent: 0 },
+    storm_drain: { start_date: null, end_date: null, progress_percent: 0 },
+    sewer: { start_date: null, end_date: null, progress_percent: 0 },
+    water: { start_date: null, end_date: null, progress_percent: 0 },
+    electrical: { start_date: null, end_date: null, progress_percent: 0 },
+    curb: { start_date: null, end_date: null, progress_percent: 0 }
   };
 }
 
 function phasesFromJob(job?: Job): PhaseForm {
   const next = emptyPhases();
+
   for (const phase of job?.job_phases ?? []) {
     next[phase.phase] = {
       start_date: phase.start_date,
-      end_date: phase.end_date
+      end_date: phase.end_date,
+      progress_percent: phase.progress_percent ?? 0
     };
   }
+
   return next;
 }
 
@@ -97,10 +102,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          phases: form.phases
-        })
+        body: JSON.stringify(form)
       });
 
       const data = await res.json().catch(() => null);
@@ -132,21 +134,15 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
     setDeleting(true);
 
     try {
-      const res = await fetch(`/api/jobs/${selectedId}`, {
-        method: "DELETE"
-      });
-
+      const res = await fetch(`/api/jobs/${selectedId}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error ?? "Delete failed.");
 
       const updated = await refreshJobs();
       await onJobsChanged?.();
 
-      if (updated.length > 0) {
-        selectJob(updated[0]);
-      } else {
-        selectJob("new");
-      }
+      if (updated.length > 0) selectJob(updated[0]);
+      else selectJob("new");
 
       alert("Job deleted.");
     } catch (err) {
@@ -165,7 +161,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
   }, [selectedJob]);
 
   return (
-    <section className="mt-4 grid gap-4 lg:grid-cols-[360px_1fr]">
+    <section className="mt-4 grid gap-4 lg:grid-cols-[380px_1fr]">
       <aside className="card">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-2xl font-black">Jobs</h2>
@@ -189,6 +185,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
                     return (
                       <div key={phase.key} className={`${phase.className} rounded-lg px-2 py-1 text-[11px] font-black text-black`}>
                         <div>{phase.label}</div>
+                        <div className="text-[10px] opacity-80">{record?.progress_percent ?? 0}%</div>
                         <div className="text-[10px] opacity-70">{record?.start_date ?? "—"} → {record?.end_date ?? "—"}</div>
                       </div>
                     );
@@ -237,7 +234,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
           {PHASES.map((phase) => (
             <div key={phase.key} className="phase-card">
               <div className={`phase-title ${phase.className}`}>{phase.label}</div>
-              <div className="phase-body">
+              <div className="grid gap-3 p-3 sm:grid-cols-[1fr_1fr_110px]">
                 <div>
                   <label className="label mt-0">Start</label>
                   <input
@@ -269,6 +266,29 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
                         phases: {
                           ...form.phases,
                           [phase.key]: { ...form.phases[phase.key], end_date: e.target.value || null }
+                        }
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label mt-0">% Complete</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    max={100}
+                    disabled={!isAdmin}
+                    value={form.phases[phase.key].progress_percent ?? 0}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        phases: {
+                          ...form.phases,
+                          [phase.key]: {
+                            ...form.phases[phase.key],
+                            progress_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0))
+                          }
                         }
                       })
                     }
