@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 const phasePayloadSchema = z.object({
+  name: z.string().min(1, "Phase name is required"),
   start_date: z.string().nullable(),
   end_date: z.string().nullable(),
-  progress_percent: z.number().min(0).max(100).nullable()
+  progress_percent: z.number().min(0).max(100).nullable(),
+  sort_order: z.number().int().min(0)
 });
 
 export const jobPayloadSchema = z.object({
@@ -13,14 +15,7 @@ export const jobPayloadSchema = z.object({
   site_contact: z.string().optional().nullable(),
   dropbox_url: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
-  phases: z.object({
-    earthwork: phasePayloadSchema,
-    storm_drain: phasePayloadSchema,
-    sewer: phasePayloadSchema,
-    water: phasePayloadSchema,
-    electrical: phasePayloadSchema,
-    curb: phasePayloadSchema
-  })
+  phases: z.array(phasePayloadSchema).min(1, "At least one phase is required")
 });
 
 export const equipmentPayloadSchema = z.object({

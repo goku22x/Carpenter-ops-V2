@@ -1,19 +1,13 @@
-export type PhaseKey =
-  | "earthwork"
-  | "storm_drain"
-  | "sewer"
-  | "water"
-  | "electrical"
-  | "curb";
-
 export type JobPhase = {
-  id: string;
-  job_id: string;
-  phase: PhaseKey;
+  id?: string;
+  job_id?: string;
+  phase: string | null;
+  name: string;
   start_date: string | null;
   end_date: string | null;
   progress_percent: number | null;
   status: string | null;
+  sort_order: number;
 };
 
 export type Job = {
