@@ -21,7 +21,7 @@ type Props = {
 
 export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment, initialPersonnel, initialWorkOrders }: Props) {
   const supabase = createClient();
-  const [view, setView] = useState<"home" | "jobs" | "personnel" | "equipment" | "work" | "operations">("home");
+  const [view, setView] = useState<"calendar" | "jobs" | "personnel" | "equipment" | "work" | "operations">("operations");
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [equipment, setEquipment] = useState<Equipment[]>(initialEquipment);
   const [personnel, setPersonnel] = useState<Personnel[]>(initialPersonnel);
@@ -30,6 +30,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
 
   async function handleLogout() {
     setLoggingOut(true);
+
     try {
       await supabase.auth.signOut();
       window.location.href = "/login";
@@ -75,7 +76,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
     <main className="mx-auto max-w-[1600px] p-4">
       <header className="rounded-3xl border-b-8 border-carpenter-red bg-carpenter-black p-5 text-white shadow-xl">
         <h1 className="text-3xl font-black">Carpenter Operations Hub</h1>
-        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Operations board workflow</p>
+        <p className="mt-1 text-sm font-bold text-slate-300">Production V2 • Operations Board home</p>
       </header>
 
       <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -85,20 +86,28 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className={view === "home" ? "btn-primary" : "btn-secondary"} onClick={() => setView("home")}>My Calendar</button>
           <button className={view === "operations" ? "btn-primary" : "btn-secondary"} onClick={() => setView("operations")}>Operations Board</button>
+          <button className={view === "calendar" ? "btn-primary" : "btn-secondary"} onClick={() => setView("calendar")}>My Calendar</button>
           <button className={view === "work" ? "btn-primary" : "btn-secondary"} onClick={() => setView("work")}>Work Orders</button>
           {profile.role === "admin" ? (
             <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Job Setup</button>
           ) : null}
           <button className={view === "personnel" ? "btn-primary" : "btn-secondary"} onClick={() => setView("personnel")}>Personnel</button>
           <button className={view === "equipment" ? "btn-primary" : "btn-secondary"} onClick={() => setView("equipment")}>Equipment</button>
-          <button className="btn-secondary" disabled={loggingOut} onClick={handleLogout}>{loggingOut ? "Logging out..." : "Logout"}</button>
+          <button className="btn-secondary" disabled={loggingOut} onClick={handleLogout}>
+            {loggingOut ? "Logging out..." : "Logout"}
+          </button>
         </div>
       </section>
 
-      {view === "home" ? (
-        <UserWorkCalendar profile={profile} personnel={personnel} jobs={jobs} workOrders={workOrders} onOpenWorkOrders={() => setView("work")} />
+      {view === "calendar" ? (
+        <UserWorkCalendar
+          profile={profile}
+          personnel={personnel}
+          jobs={jobs}
+          workOrders={workOrders}
+          onOpenWorkOrders={() => setView("work")}
+        />
       ) : null}
 
       {view === "jobs" && profile.role === "admin" ? (
@@ -113,25 +122,50 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       ) : null}
 
       {view === "work" ? (
-        <WorkOrdersModule workOrders={workOrders} jobs={jobs} equipment={equipment} personnel={personnel} isAdmin={profile.role === "admin"} onWorkOrdersChanged={async () => {
+        <WorkOrdersModule
+          workOrders={workOrders}
+          jobs={jobs}
+          equipment={equipment}
+          personnel={personnel}
+          isAdmin={profile.role === "admin"}
+          onWorkOrdersChanged={async () => {
             await refreshWorkOrders();
-          }} />
+          }}
+        />
       ) : null}
 
       {view === "personnel" ? (
-        <PersonnelModule personnel={personnel} isAdmin={profile.role === "admin"} onPersonnelChanged={async () => {
+        <PersonnelModule
+          personnel={personnel}
+          isAdmin={profile.role === "admin"}
+          onPersonnelChanged={async () => {
             await refreshPersonnel();
-          }} />
+          }}
+        />
       ) : null}
 
       {view === "equipment" ? (
-        <EquipmentModule equipment={equipment} jobs={jobs} isAdmin={profile.role === "admin"} onEquipmentChanged={async () => {
+        <EquipmentModule
+          equipment={equipment}
+          jobs={jobs}
+          isAdmin={profile.role === "admin"}
+          onEquipmentChanged={async () => {
             await refreshEquipment();
-          }} />
+          }}
+        />
       ) : null}
 
       {view === "operations" ? (
-        <EquipmentBoard equipment={equipment} jobs={jobs} personnel={personnel} workOrders={workOrders} />
+        <EquipmentBoard
+          equipment={equipment}
+          jobs={jobs}
+          personnel={personnel}
+          workOrders={workOrders}
+          profile={profile}
+          onWorkOrdersChanged={async () => {
+            await refreshWorkOrders();
+          }}
+        />
       ) : null}
     </main>
   );
