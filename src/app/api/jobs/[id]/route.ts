@@ -63,3 +63,36 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   return NextResponse.json(job);
 }
+
+export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  const supabase = await createClient();
+  const profile = await getProfile(supabase);
+
+  if (!profile || profile.role !== "admin") {
+    return NextResponse.json({ error: "Admin only." }, { status: 403 });
+  }
+
+  // Unassign equipment first so deleting a job does not strand equipment references.
+  const { error: unassignError } = await supabase
+    .from("equipment")
+    .update({
+      current_job_id: null,
+      current_site: "Unassigned",
+      updated_at: new Date().toISOString()
+    })
+    .eq("current_job_id", id)
+    .eq("organization_id", profile.organization_id);
+
+  if (unassignError) return NextResponse.json({ error: unassignError.message }, { status: 400 });
+
+  const { error } = await supabase
+    .from("jobs")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  return NextResponse.json({ ok: true });
+}
