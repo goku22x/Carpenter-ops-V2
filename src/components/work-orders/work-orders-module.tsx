@@ -60,12 +60,31 @@ function inferJobFromEquipment(equipment: Equipment[], equipmentId: string) {
   return equipment.find((eq) => eq.id === equipmentId)?.current_job_id ?? "";
 }
 
+function appendUpdate(existingDescription: string, label: string, note: string) {
+  const cleanNote = note.trim();
+  if (!cleanNote) return existingDescription;
+
+  const timestamp = new Date().toLocaleString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+
+  const divider = existingDescription.trim() ? "\n\n" : "";
+  return `${existingDescription}${divider}[${label} - ${timestamp}]\n${cleanNote}`;
+}
+
 export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdmin, onWorkOrdersChanged }: Props) {
   const [selectedId, setSelectedId] = useState<string | "new">(workOrders[0]?.id ?? "new");
   const selected = workOrders.find((order) => order.id === selectedId);
   const [saving, setSaving] = useState(false);
+  const [quickSaving, setQuickSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState("All");
+  const [updateNote, setUpdateNote] = useState("");
+  const [sendBackNote, setSendBackNote] = useState("");
 
   const [form, setForm] = useState(() =>
     selected
@@ -106,6 +125,9 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
   }, [personnel, form.work_type]);
 
   function selectOrder(order: WorkOrder | "new") {
+    setUpdateNote("");
+    setSendBackNote("");
+
     if (order === "new") {
       setSelectedId("new");
       setForm(emptyForm);
@@ -151,6 +173,45 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
       related_equipment_id: equipmentId,
       job_id: form.work_type === "Maintenance" && inferredJobId ? inferredJobId : form.job_id
     });
+  }
+
+  async function savePayload(overrides: Partial<typeof form>, successMessage: string) {
+    if (selectedId === "new") return;
+
+    setQuickSaving(true);
+
+    try {
+      const payload = {
+        ...form,
+        ...overrides,
+        title: form.title || getDefaultTitle(form.work_type),
+        job_id: (overrides.job_id ?? form.job_id) || null,
+        assigned_personnel_id: (overrides.assigned_personnel_id ?? form.assigned_personnel_id) || null,
+        related_equipment_id: (overrides.related_equipment_id ?? form.related_equipment_id) || null,
+        due_date: (overrides.due_date ?? form.due_date) || null
+      };
+
+      const res = await fetch(`/api/work-orders/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Update failed.");
+
+      setForm({
+        ...form,
+        ...overrides
+      });
+
+      await onWorkOrdersChanged();
+      alert(successMessage);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Update failed.");
+    } finally {
+      setQuickSaving(false);
+    }
   }
 
   async function saveWorkOrder() {
@@ -212,6 +273,58 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     } finally {
       setSaving(false);
     }
+  }
+
+  async function addUpdate() {
+    if (selectedId === "new") return alert("Save the work order first.");
+    if (!updateNote.trim()) return alert("Type an update note first.");
+
+    const nextDescription = appendUpdate(form.description, "Update", updateNote);
+    setUpdateNote("");
+
+    await savePayload(
+      {
+        description: nextDescription,
+        status: form.status === "New" ? "In Progress" : form.status
+      },
+      "Update added."
+    );
+  }
+
+  async function markComplete() {
+    if (selectedId === "new") return alert("Save the work order first.");
+
+    const note = updateNote.trim();
+    const nextDescription = note
+      ? appendUpdate(form.description, "Completed", note)
+      : appendUpdate(form.description, "Completed", "Marked complete.");
+
+    setUpdateNote("");
+
+    await savePayload(
+      {
+        description: nextDescription,
+        status: "Complete"
+      },
+      "Marked complete."
+    );
+  }
+
+  async function sendBack() {
+    if (selectedId === "new") return alert("Save the work order first.");
+    if (!sendBackNote.trim()) return alert("Type why this is being sent back.");
+
+    const nextDescription = appendUpdate(form.description, "Sent Back", sendBackNote);
+    setSendBackNote("");
+
+    await savePayload(
+      {
+        description: nextDescription,
+        status: "Waiting",
+        assigned_personnel_id: ""
+      },
+      "Work order sent back."
+    );
   }
 
   async function deleteWorkOrder() {
@@ -292,6 +405,53 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
               <p className="mt-1 text-xs font-bold text-red-700">No active personnel found for this department.</p>
             ) : null}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderActionControls() {
+    if (selectedId === "new") return null;
+
+    return (
+      <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-3">
+        <h3 className="font-black">Update / Complete</h3>
+
+        <label className="label">Update Note</label>
+        <textarea
+          className="input min-h-20 bg-white"
+          placeholder="Type progress update, completion note, or what was done..."
+          value={updateNote}
+          onChange={(e) => setUpdateNote(e.target.value)}
+        />
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button className="btn-secondary" disabled={quickSaving} onClick={addUpdate}>
+            Add Update
+          </button>
+
+          <button className="btn-primary" disabled={quickSaving} onClick={markComplete}>
+            Mark Complete
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-yellow-300 bg-yellow-50 p-3">
+          <h4 className="font-black text-yellow-900">Send Back</h4>
+          <p className="mt-1 text-xs font-bold text-yellow-900">
+            Use this when the request needs more info, has a problem, or should go back to the office/requester.
+          </p>
+
+          <label className="label">Reason</label>
+          <textarea
+            className="input min-h-20 bg-white"
+            placeholder="Example: Need plan sheet, wrong equipment selected, missing location..."
+            value={sendBackNote}
+            onChange={(e) => setSendBackNote(e.target.value)}
+          />
+
+          <button className="btn-secondary mt-3" disabled={quickSaving} onClick={sendBack}>
+            Send Back
+          </button>
         </div>
       </div>
     );
@@ -521,10 +681,11 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
         </div>
 
         {renderAdminControls()}
+        {renderActionControls()}
 
         <div className="mt-4">
           <button className="btn-primary w-full sm:w-auto" disabled={saving} onClick={saveWorkOrder}>
-            {saving ? "Saving..." : "Submit Work Order"}
+            {saving ? "Saving..." : selectedId === "new" ? "Submit Work Order" : "Save Changes"}
           </button>
         </div>
       </section>
