@@ -45,6 +45,10 @@ export type Equipment = {
   equipment_number: string | null;
   equipment_type: string | null;
   status: string;
+  ownership_type: string | null;
+  rental_company: string | null;
+  rental_return_date: string | null;
+  rental_notes: string | null;
   current_job_id: string | null;
   current_site: string | null;
   assigned_foreman_id: string | null;

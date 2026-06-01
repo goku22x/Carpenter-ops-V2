@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-const phasePayloadSchema = z.object({ start_date: z.string().nullable(), end_date: z.string().nullable(), progress_percent: z.number().min(0).max(100).nullable() });
+const phasePayloadSchema = z.object({
+  start_date: z.string().nullable(),
+  end_date: z.string().nullable(),
+  progress_percent: z.number().min(0).max(100).nullable()
+});
 
 export const jobPayloadSchema = z.object({
   name: z.string().min(1, "Job name is required"),
@@ -24,6 +28,10 @@ export const equipmentPayloadSchema = z.object({
   equipment_number: z.string().optional().nullable(),
   equipment_type: z.string().optional().nullable(),
   status: z.string().default("Active"),
+  ownership_type: z.enum(["Owned", "Rental", "Subcontractor"]).default("Owned"),
+  rental_company: z.string().optional().nullable(),
+  rental_return_date: z.string().optional().nullable(),
+  rental_notes: z.string().optional().nullable(),
   current_job_id: z.string().uuid().optional().nullable(),
   current_site: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
