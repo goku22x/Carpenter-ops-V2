@@ -53,13 +53,11 @@ export function LoginForm() {
         return;
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
-      if (data.session?.access_token) {
-        await bootstrap(data.session.access_token);
-      }
-
+      // Sign-in should not depend on bootstrap.
+      // Existing users with profiles go straight to the protected dashboard.
       window.location.href = "/dashboard";
     } catch (err) {
       alert(err instanceof Error ? err.message : "Authentication failed.");
