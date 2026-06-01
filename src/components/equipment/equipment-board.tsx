@@ -245,7 +245,7 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
     .filter((item): item is { phase: PhaseLike; index: number; start: Date; end: Date } => Boolean(item.start && item.end));
 
   if (datedPhases.length === 0) {
-    return <EmptyBox text="Add phase start/end dates to show the construction calendar." />;
+    return <EmptyBox text="Add phase dates to show calendar." />;
   }
 
   const days = buildMonthDays(visibleMonth);
@@ -273,27 +273,23 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
 
   return (
     <div className="rounded-2xl border bg-white p-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-2">
         <div>
-          <h4 className="font-black">Construction Calendar</h4>
-          <p className="text-xs font-bold text-slate-500">
-            Colored phase chips show what is planned on each calendar day.
-          </p>
+          <h4 className="text-sm font-black">Mini Schedule</h4>
+          <div className="text-xs font-black text-slate-500">{monthTitle(visibleMonth)}</div>
         </div>
 
-        <div className="flex gap-2">
-          <button className="btn-secondary" onClick={previousMonth}>Prev</button>
-          <button className="btn-secondary" onClick={resetMonth}>Project</button>
-          <button className="btn-secondary" onClick={nextMonth}>Next</button>
+        <div className="flex gap-1">
+          <button className="rounded-lg border bg-white px-2 py-1 text-xs font-black" onClick={previousMonth}>‹</button>
+          <button className="rounded-lg border bg-white px-2 py-1 text-xs font-black" onClick={resetMonth}>•</button>
+          <button className="rounded-lg border bg-white px-2 py-1 text-xs font-black" onClick={nextMonth}>›</button>
         </div>
       </div>
 
-      <div className="mt-3 text-center text-lg font-black">{monthTitle(visibleMonth)}</div>
-
-      <div className="mt-3 grid grid-cols-7 overflow-hidden rounded-2xl border">
+      <div className="mt-2 grid grid-cols-7 overflow-hidden rounded-xl border">
         {WEEKDAYS.map((weekday) => (
-          <div key={weekday} className="border-b bg-slate-100 p-2 text-center text-xs font-black uppercase text-slate-600">
-            {weekday}
+          <div key={weekday} className="border-b bg-slate-100 p-1 text-center text-[9px] font-black uppercase text-slate-500">
+            {weekday.slice(0, 1)}
           </div>
         ))}
 
@@ -305,40 +301,23 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
           return (
             <div
               key={dateKey(day)}
-              className={`min-h-28 border-b border-r p-2 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-400"} ${isToday ? "ring-2 ring-red-500 ring-inset" : ""}`}
+              className={`min-h-12 border-b border-r p-1 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-300"} ${isToday ? "ring-2 ring-red-500 ring-inset" : ""}`}
             >
-              <div className="mb-1 flex items-center justify-between">
-                <span className={`text-xs font-black ${isToday ? "rounded-full bg-red-600 px-2 py-1 text-white" : ""}`}>
-                  {day.getDate()}
-                </span>
-
-                {activePhases.length > 0 ? (
-                  <span className="text-[10px] font-black text-slate-400">
-                    {activePhases.length}
-                  </span>
-                ) : null}
+              <div className={`mb-0.5 text-[9px] font-black ${isToday ? "text-red-700" : ""}`}>
+                {day.getDate()}
               </div>
 
-              <div className="space-y-1">
-                {activePhases.slice(0, 4).map(({ phase, index }) => {
-                  const percent = Math.max(0, Math.min(100, phase.progress_percent ?? 0));
-                  const label = phaseInitials(phase.name || phase.phase);
+              <div className="space-y-0.5">
+                {activePhases.slice(0, 2).map(({ phase, index }) => (
+                  <div
+                    key={`${dateKey(day)}-${phase.id ?? index}`}
+                    className={`h-2 rounded-sm ${phaseColorClass(index)}`}
+                    title={`${phase.name || phase.phase} • ${formatDate(phase.start_date)} - ${formatDate(phase.end_date)}`}
+                  />
+                ))}
 
-                  return (
-                    <div
-                      key={`${dateKey(day)}-${phase.id ?? index}`}
-                      className={`truncate rounded-md px-1.5 py-1 text-[10px] font-black text-black ${phaseColorClass(index)}`}
-                      title={`${phase.name || phase.phase} • ${formatDate(phase.start_date)} - ${formatDate(phase.end_date)} • ${percent}%`}
-                    >
-                      {label} {percent}%
-                    </div>
-                  );
-                })}
-
-                {activePhases.length > 4 ? (
-                  <div className="text-[10px] font-black text-slate-500">
-                    +{activePhases.length - 4} more
-                  </div>
+                {activePhases.length > 2 ? (
+                  <div className="text-[8px] font-black text-slate-500">+{activePhases.length - 2}</div>
                 ) : null}
               </div>
             </div>
@@ -346,11 +325,11 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
         })}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {sorted.map((phase, index) => (
-          <div key={phase.id ?? `${phase.name}-${index}`} className="flex items-center gap-1 rounded-full border bg-white px-2 py-1 text-[10px] font-black">
-            <span className={`h-3 w-3 rounded-full ${phaseColorClass(index)}`} />
-            <span>{phaseInitials(phase.name || phase.phase)} = {phase.name || phase.phase}</span>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {sorted.slice(0, 6).map((phase, index) => (
+          <div key={phase.id ?? `${phase.name}-${index}`} className="flex items-center gap-1 text-[9px] font-black">
+            <span className={`h-2 w-2 rounded-full ${phaseColorClass(index)}`} />
+            <span>{phaseInitials(phase.name || phase.phase)}</span>
           </div>
         ))}
       </div>
@@ -527,7 +506,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3 xl:grid-cols-[1.1fr_1.7fr]">
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,2.3fr)_minmax(260px,0.7fr)]">
                     <div className="rounded-2xl border bg-slate-50 p-3">
                       <h4 className="font-black">Job Info</h4>
                       <div className="mt-2 space-y-1 text-sm">
