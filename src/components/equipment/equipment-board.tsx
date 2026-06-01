@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Equipment, Job, Personnel, WorkOrder } from "@/lib/types";
+import type { Equipment, Job, Personnel, Profile, WorkOrder } from "@/lib/types";
 import { equipmentTypeStyle } from "@/lib/equipment-types";
 import { phaseColorClass } from "@/lib/phases";
-import { formatDateRange } from "@/lib/date-format";
+import { formatDate, formatDateRange } from "@/lib/date-format";
 import { getWorkOrderTypeColor } from "@/lib/work-orders";
 
 type Props = {
@@ -12,12 +12,23 @@ type Props = {
   jobs: Job[];
   personnel?: Personnel[];
   workOrders?: WorkOrder[];
+  profile?: Profile;
+  onWorkOrdersChanged?: () => Promise<void> | void;
 };
 
 type PersonnelWithJob = Personnel & {
   current_job_id?: string | null;
   assigned_job_id?: string | null;
 };
+
+const QUICK_REQUESTS = [
+  "Survey",
+  "Maintenance",
+  "Mobilization",
+  "Trucking",
+  "Foreman Assignment",
+  "Office"
+] as const;
 
 function imagePath(value: string | null | undefined) {
   if (!value) return "";
@@ -29,16 +40,22 @@ function imagePath(value: string | null | undefined) {
 function normalizeUrl(value: string | null | undefined) {
   const trimmed = (value ?? "").trim();
   if (!trimmed) return "";
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
   return `https://${trimmed}`;
 }
 
 function openUrl(value: string | null | undefined) {
   const url = normalizeUrl(value);
+
   if (!url) {
     alert("No project files link has been added for this job yet.");
     return;
   }
+
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
@@ -46,8 +63,50 @@ function isOpenWorkOrder(order: WorkOrder) {
   return !["Complete", "Closed"].includes(order.status);
 }
 
+function isImportantWorkOrder(order: WorkOrder) {
+  return ["Critical", "High"].includes(order.priority) || ["New", "Waiting"].includes(order.status);
+}
+
+function getCurrentPerson(profile: Profile | undefined, personnel: PersonnelWithJob[]) {
+  if (!profile) return null;
+
+  const byEmail = personnel.find(
+    (person) =>
+      person.email &&
+      profile.email &&
+      person.email.toLowerCase() === profile.email.toLowerCase()
+  );
+
+  if (byEmail) return byEmail;
+
+  const profileName = profile.full_name?.trim().toLowerCase();
+  if (!profileName) return null;
+
+  return personnel.find((person) => person.full_name.trim().toLowerCase() === profileName) ?? null;
+}
+
+function getDefaultRequestDescription(type: string) {
+  switch (type) {
+    case "Survey":
+      return "Survey request created from Operations Board.";
+    case "Maintenance":
+      return "Maintenance request created from Operations Board.";
+    case "Mobilization":
+      return "Mobilization request created from Operations Board.";
+    case "Trucking":
+      return "Trucking request created from Operations Board.";
+    case "Foreman Assignment":
+      return "Foreman assignment request created from Operations Board.";
+    case "Office":
+      return "Office request created from Operations Board.";
+    default:
+      return "Request created from Operations Board.";
+  }
+}
+
 function EquipmentCard({ item }: { item: Equipment }) {
   const style = equipmentTypeStyle(item.equipment_type, item.ownership_type);
+
   const statusClass =
     item.status === "Down" || item.status === "In Shop"
       ? "ring-2 ring-red-400"
@@ -69,18 +128,24 @@ function EquipmentCard({ item }: { item: Equipment }) {
       <div className="min-w-0">
         <div className="font-black leading-tight">{item.name}</div>
         <div className="text-xs text-slate-500">#{item.equipment_number ?? "—"}</div>
+
         <div className={`mt-1 inline-block rounded-full px-2 py-1 text-[10px] font-black uppercase ${style.badgeClass}`}>
           {item.ownership_type === "Rental" ? "Rental" : item.equipment_type ?? "Other"}
         </div>
+
         <div className="mt-1 text-xs font-black uppercase">{item.status}</div>
+
+        {item.ownership_type === "Rental" && item.rental_company ? (
+          <div className="text-xs font-bold text-pink-800">{item.rental_company}</div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function CountBadge({ label, count }: { label: string; count: number }) {
+function CountBadge({ label, count, warn = false }: { label: string; count: number; warn?: boolean }) {
   return (
-    <div className="rounded-2xl bg-slate-100 px-3 py-2 text-center">
+    <div className={`rounded-2xl px-3 py-2 text-center ${warn ? "bg-red-100 text-red-800" : "bg-slate-100"}`}>
       <div className="text-2xl font-black">{count}</div>
       <div className="text-[10px] font-black uppercase text-slate-500">{label}</div>
     </div>
@@ -88,51 +153,199 @@ function CountBadge({ label, count }: { label: string; count: number }) {
 }
 
 function EmptyBox({ text }: { text: string }) {
-  return <div className="rounded-2xl border border-dashed bg-slate-50 p-4 text-sm font-bold text-slate-500">{text}</div>;
+  return (
+    <div className="rounded-2xl border border-dashed bg-slate-50 p-4 text-sm font-bold text-slate-500">
+      {text}
+    </div>
+  );
 }
 
-export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [] }: Props) {
-  const [expandedJobId, setExpandedJobId] = useState<string | null>(jobs[0]?.id ?? null);
+function PhaseMiniCalendar({ phases }: { phases: NonNullable<Job["job_phases"]> }) {
+  const sorted = [...phases].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+  if (sorted.length === 0) {
+    return <p className="mt-2 text-sm text-slate-500">No phases set up.</p>;
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {sorted.map((phase, index) => {
+        const percent = Math.max(0, Math.min(100, phase.progress_percent ?? 0));
+
+        return (
+          <div key={phase.id ?? `${phase.name}-${index}`} className="rounded-xl border bg-white p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`h-3 w-3 shrink-0 rounded-full ${phaseColorClass(index)}`} />
+                <div className="truncate text-sm font-black">{phase.name || phase.phase}</div>
+              </div>
+
+              <div className="text-sm font-black">{percent}%</div>
+            </div>
+
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div className={`h-full ${phaseColorClass(index)}`} style={{ width: `${percent}%` }} />
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] font-bold text-slate-600">
+              <div className="rounded-lg bg-slate-100 p-2">
+                <div className="uppercase text-slate-400">Start</div>
+                <div>{formatDate(phase.start_date)}</div>
+              </div>
+              <div className="rounded-lg bg-slate-100 p-2">
+                <div className="uppercase text-slate-400">End</div>
+                <div>{formatDate(phase.end_date)}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [], profile, onWorkOrdersChanged }: Props) {
   const personnelWithJob = personnel as PersonnelWithJob[];
+  const currentPerson = getCurrentPerson(profile, personnelWithJob);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [quickRequestJobId, setQuickRequestJobId] = useState<string | null>(null);
+  const [quickRequestType, setQuickRequestType] = useState<string>("Survey");
+  const [quickRequestNote, setQuickRequestNote] = useState("");
+  const [quickSaving, setQuickSaving] = useState(false);
+
   const activeJobs = jobs.filter((job) => job.active !== false);
+
+  const assignedJobIds = new Set<string>();
+
+  if (currentPerson) {
+    for (const order of workOrders) {
+      if (order.assigned_personnel_id === currentPerson.id && order.job_id && isOpenWorkOrder(order)) {
+        assignedJobIds.add(order.job_id);
+      }
+    }
+
+    for (const person of personnelWithJob) {
+      if (person.id === currentPerson.id) {
+        if (person.current_job_id) assignedJobIds.add(person.current_job_id);
+        if (person.assigned_job_id) assignedJobIds.add(person.assigned_job_id);
+      }
+    }
+  }
+
   const unassignedEquipment = equipment.filter((item) => !item.current_job_id);
   const unassignedOpenOrders = workOrders.filter((order) => !order.job_id && isOpenWorkOrder(order));
 
   const boardRows = useMemo(() => {
-    return activeJobs.map((job) => {
-      const assignedEquipment = equipment.filter((item) => item.current_job_id === job.id);
-      const assignedPersonnel = personnelWithJob.filter(
-        (person) => person.active !== false && (person.current_job_id === job.id || person.assigned_job_id === job.id)
-      );
-      const openWorkOrders = workOrders.filter((order) => order.job_id === job.id && isOpenWorkOrder(order));
-      const sortedPhases = [...(job.job_phases ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-      return { job, assignedEquipment, assignedPersonnel, openWorkOrders, sortedPhases };
-    });
-  }, [activeJobs, equipment, personnelWithJob, workOrders]);
+    return activeJobs
+      .map((job) => {
+        const assignedEquipment = equipment.filter((item) => item.current_job_id === job.id);
+        const assignedPersonnel = personnelWithJob.filter(
+          (person) =>
+            person.active !== false &&
+            (person.current_job_id === job.id || person.assigned_job_id === job.id)
+        );
+        const jobWorkOrders = workOrders.filter((order) => order.job_id === job.id);
+        const openWorkOrders = jobWorkOrders.filter(isOpenWorkOrder);
+        const importantOpenOrders = openWorkOrders.filter(isImportantWorkOrder);
+        const sortedPhases = [...(job.job_phases ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+        const assignedToMe = assignedJobIds.has(job.id);
+
+        return {
+          job,
+          assignedEquipment,
+          assignedPersonnel,
+          jobWorkOrders,
+          openWorkOrders,
+          importantOpenOrders,
+          sortedPhases,
+          assignedToMe,
+          sortScore:
+            (assignedToMe ? 10000 : 0) +
+            importantOpenOrders.length * 100 +
+            openWorkOrders.length * 10 +
+            assignedEquipment.length
+        };
+      })
+      .sort((a, b) => b.sortScore - a.sortScore || a.job.name.localeCompare(b.job.name));
+  }, [activeJobs, equipment, personnelWithJob, workOrders, assignedJobIds]);
+
+  async function createQuickRequest(jobId: string, type: string) {
+    const description = quickRequestNote.trim() || getDefaultRequestDescription(type);
+
+    setQuickSaving(true);
+
+    try {
+      const res = await fetch("/api/work-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: jobId,
+          work_type: type,
+          title: `${type} Request`,
+          description,
+          priority: "Medium",
+          status: "New",
+          assigned_personnel_id: null,
+          related_equipment_id: null,
+          due_date: null,
+          custom_fields: {}
+        })
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Could not create request.");
+
+      setQuickRequestJobId(null);
+      setQuickRequestType("Survey");
+      setQuickRequestNote("");
+      await onWorkOrdersChanged?.();
+      alert(`${type} request created.`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not create request.");
+    } finally {
+      setQuickSaving(false);
+    }
+  }
 
   return (
     <section className="mt-4 space-y-4">
       <div className="card">
         <h2 className="text-2xl font-black">Operations Board</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Daily job view. See where equipment is first, then expand a job for project files, progress, and active requests.
+          Home screen for daily operations. Your assigned/important jobs float to the top. Expand a job for files, phase calendar, and quick requests.
         </p>
+
+        {currentPerson ? (
+          <p className="mt-2 text-sm font-bold text-slate-700">
+            Showing priority for {currentPerson.full_name}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid gap-4">
-        {boardRows.map(({ job, assignedEquipment, assignedPersonnel, openWorkOrders, sortedPhases }) => {
+        {boardRows.map(({ job, assignedEquipment, assignedPersonnel, openWorkOrders, importantOpenOrders, sortedPhases, assignedToMe }) => {
           const expanded = expandedJobId === job.id;
           const foreman =
-            assignedPersonnel.find((person) => person.position?.toLowerCase().includes("foreman")) ?? assignedPersonnel[0];
+            assignedPersonnel.find((person) => person.position?.toLowerCase().includes("foreman")) ??
+            assignedPersonnel[0];
 
           return (
-            <section key={job.id} className="rounded-3xl border-l-8 border-carpenter-red bg-white p-4 shadow-sm">
+            <section
+              key={job.id}
+              className={`rounded-3xl border-l-8 bg-white p-4 shadow-sm ${assignedToMe ? "border-blue-600 ring-2 ring-blue-200" : "border-carpenter-red"}`}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <button className="text-left" onClick={() => setExpandedJobId(expanded ? null : job.id)}>
                   <div className="flex items-center gap-2">
                     <span className="text-xl font-black">{expanded ? "▲" : "▼"}</span>
                     <h3 className="text-2xl font-black uppercase">{job.name}</h3>
+                    {assignedToMe ? (
+                      <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-black uppercase text-blue-800">
+                        My Job
+                      </span>
+                    ) : null}
                   </div>
+
                   <p className="mt-1 text-sm font-bold text-slate-500">
                     {foreman ? `Foreman: ${foreman.full_name}` : "Foreman: not assigned"}
                   </p>
@@ -141,7 +354,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                 <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
                   <CountBadge label="Personnel" count={assignedPersonnel.length} />
                   <CountBadge label="Equipment" count={assignedEquipment.length} />
-                  <CountBadge label="Requests" count={openWorkOrders.length} />
+                  <CountBadge label="Requests" count={openWorkOrders.length} warn={importantOpenOrders.length > 0} />
                 </div>
               </div>
 
@@ -151,7 +364,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                   <EmptyBox text="No equipment assigned to this job." />
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {assignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
+                    {assignedEquipment.map((item) => (
+                      <EquipmentCard key={item.id} item={item} />
+                    ))}
                   </div>
                 )}
               </div>
@@ -159,8 +374,50 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               {expanded ? (
                 <div className="mt-4 grid gap-4 border-t pt-4">
                   <div className="flex flex-wrap gap-2">
-                    <button className="btn-primary" onClick={() => openUrl(job.dropbox_url)}>Open Project Files</button>
+                    <button className="btn-primary" onClick={() => openUrl(job.dropbox_url)}>
+                      Open Project Files
+                    </button>
+
+                    {QUICK_REQUESTS.map((type) => (
+                      <button
+                        key={type}
+                        className={quickRequestJobId === job.id && quickRequestType === type ? "btn-primary" : "btn-secondary"}
+                        onClick={() => {
+                          setQuickRequestJobId(job.id);
+                          setQuickRequestType(type);
+                          setQuickRequestNote("");
+                        }}
+                      >
+                        + {type}
+                      </button>
+                    ))}
                   </div>
+
+                  {quickRequestJobId === job.id ? (
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3">
+                      <h4 className="font-black">Create {quickRequestType} Request</h4>
+                      <p className="mt-1 text-xs font-bold text-slate-600">
+                        Quick request from Operations Board. You can add details now or edit it later in Work Orders.
+                      </p>
+
+                      <label className="label">Notes</label>
+                      <textarea
+                        className="input min-h-20 bg-white"
+                        placeholder="What needs done?"
+                        value={quickRequestNote}
+                        onChange={(event) => setQuickRequestNote(event.target.value)}
+                      />
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button className="btn-primary" disabled={quickSaving} onClick={() => createQuickRequest(job.id, quickRequestType)}>
+                          {quickSaving ? "Creating..." : "Create Request"}
+                        </button>
+                        <button className="btn-secondary" disabled={quickSaving} onClick={() => setQuickRequestJobId(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="grid gap-3 lg:grid-cols-3">
                     <div className="rounded-2xl border bg-slate-50 p-3">
@@ -173,26 +430,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     </div>
 
                     <div className="rounded-2xl border bg-slate-50 p-3 lg:col-span-2">
-                      <h4 className="font-black">Progress</h4>
-                      {sortedPhases.length === 0 ? (
-                        <p className="mt-2 text-sm text-slate-500">No phases set up.</p>
-                      ) : (
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                          {sortedPhases.map((phase, index) => (
-                            <div key={phase.id ?? `${job.id}-${index}`} className="rounded-xl border bg-white p-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`h-3 w-3 rounded-full ${phaseColorClass(index)}`} />
-                                <div className="min-w-0 flex-1 truncate text-sm font-black">{phase.name || phase.phase}</div>
-                                <div className="text-sm font-black">{phase.progress_percent ?? 0}%</div>
-                              </div>
-                              <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
-                                <div className={`h-full ${phaseColorClass(index)}`} style={{ width: `${Math.max(0, Math.min(100, phase.progress_percent ?? 0))}%` }} />
-                              </div>
-                              <div className="mt-1 text-[11px] font-bold text-slate-500">{formatDateRange(phase.start_date, phase.end_date)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <h4 className="font-black">Phase Calendar</h4>
+                      <PhaseMiniCalendar phases={sortedPhases} />
                     </div>
                   </div>
 
@@ -200,7 +439,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     <div className="rounded-2xl border bg-white p-3">
                       <h4 className="font-black">Personnel ({assignedPersonnel.length})</h4>
                       {assignedPersonnel.length === 0 ? (
-                        <p className="mt-2 text-sm text-slate-500">Personnel job assignment is not fully set up yet.</p>
+                        <p className="mt-2 text-sm text-slate-500">
+                          Personnel job assignment is not fully set up yet.
+                        </p>
                       ) : (
                         <div className="mt-2 space-y-2">
                           {assignedPersonnel.map((person) => (
@@ -222,21 +463,30 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                           {openWorkOrders.slice(0, 6).map((order) => (
                             <div key={order.id} className="rounded-xl bg-slate-50 p-2 text-sm">
                               <div className="flex items-center justify-between gap-2">
-                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getWorkOrderTypeColor(order.work_type)}`}>{order.work_type}</span>
+                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getWorkOrderTypeColor(order.work_type)}`}>
+                                  {order.work_type}
+                                </span>
                                 <span className="text-[10px] font-black uppercase">{order.status}</span>
                               </div>
                               <div className="mt-1 font-black">{order.title}</div>
                               <div className="text-xs text-slate-500">{order.description || "No description"}</div>
                             </div>
                           ))}
-                          {openWorkOrders.length > 6 ? <div className="text-xs font-black text-slate-500">+{openWorkOrders.length - 6} more open requests</div> : null}
+
+                          {openWorkOrders.length > 6 ? (
+                            <div className="text-xs font-black text-slate-500">
+                              +{openWorkOrders.length - 6} more open requests
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </div>
 
                     <div className="rounded-2xl border bg-white p-3">
                       <h4 className="font-black">Notes</h4>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{job.notes || "No job notes."}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
+                        {job.notes || "No job notes."}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -254,11 +504,14 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               </p>
             </div>
           </div>
+
           {unassignedEquipment.length === 0 ? (
             <EmptyBox text="No unassigned equipment." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {unassignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
+              {unassignedEquipment.map((item) => (
+                <EquipmentCard key={item.id} item={item} />
+              ))}
             </div>
           )}
         </section>
