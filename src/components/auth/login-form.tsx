@@ -10,12 +10,16 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
 
   async function submit() {
     setLoading(true);
+    setStatus("Starting...");
 
     try {
       if (mode === "signup") {
+        setStatus("Creating account...");
+
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -27,14 +31,17 @@ export function LoginForm() {
         if (error) throw error;
 
         if (data.session) {
-          window.location.assign("/dashboard");
+          setStatus("Account created. Opening dashboard...");
+          window.location.href = "/dashboard";
           return;
         }
 
-        alert("Account created. If email confirmation is enabled, confirm your email, then sign in.");
+        setStatus("Account created. Confirm email if required, then sign in.");
         setMode("signin");
         return;
       }
+
+      setStatus("Signing in...");
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -44,12 +51,35 @@ export function LoginForm() {
       if (error) throw error;
 
       if (!data.session) {
-        throw new Error("Sign-in succeeded but no session was returned.");
+        throw new Error("Supabase did not return a session.");
       }
 
-      window.location.assign("/dashboard");
+      setStatus("Signed in. Checking server session...");
+
+      const sessionCheck = await fetch("/api/debug-session", {
+        method: "GET",
+        cache: "no-store"
+      });
+
+      const sessionJson = await sessionCheck.json().catch(() => null);
+
+      if (!sessionCheck.ok) {
+        throw new Error(sessionJson?.error ?? "Server session check failed.");
+      }
+
+      if (!sessionJson?.hasProfile) {
+        throw new Error("Server sees login, but no profile row was found.");
+      }
+
+      setStatus(
+        `Signed in as ${sessionJson.userEmail}. Profile role: ${sessionJson.profile?.role ?? "unknown"}. Opening dashboard...`
+      );
+
+      window.location.href = "/dashboard";
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Authentication failed.");
+      const message = err instanceof Error ? err.message : "Authentication failed.";
+      setStatus(`ERROR: ${message}`);
+      alert(message);
     } finally {
       setLoading(false);
     }
@@ -86,6 +116,12 @@ export function LoginForm() {
           onChange={(event) => setPassword(event.target.value)}
         />
       </div>
+
+      {status ? (
+        <div className="rounded-xl bg-white/10 p-3 text-sm font-bold text-white">
+          {status}
+        </div>
+      ) : null}
 
       <button className="btn-primary w-full" disabled={loading} onClick={submit}>
         {loading ? "Working..." : mode === "signin" ? "Sign In" : "Create Account"}
