@@ -46,3 +46,15 @@ export type Equipment = {
   created_at?: string;
   updated_at?: string;
 };
+
+export type Personnel = {
+  id: string;
+  organization_id: string;
+  full_name: string;
+  department: string | null;
+  position: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+};

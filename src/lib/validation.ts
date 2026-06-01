@@ -26,6 +26,16 @@ export const equipmentPayloadSchema = z.object({
   notes: z.string().optional().nullable()
 });
 
+export const personnelPayloadSchema = z.object({
+  full_name: z.string().min(1, "Full name is required"),
+  department: z.string().optional().nullable(),
+  position: z.string().optional().nullable(),
+  email: z.string().email().optional().or(z.literal("")).nullable(),
+  phone: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  active: z.boolean().default(true)
+});
+
 export const workRequestSchema = z.object({
   job_id: z.string().uuid().optional().nullable(),
   department: z.enum([
