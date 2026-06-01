@@ -46,6 +46,17 @@ function phasesFromJob(job?: Job): PhaseForm[] {
   }));
 }
 
+function normalizeUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
+}
+
 export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [selectedId, setSelectedId] = useState<string | "new">(jobs[0]?.id ?? "new");
@@ -88,6 +99,16 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
       notes: job.notes ?? "",
       phases: phasesFromJob(job)
     });
+  }
+
+  function openDropbox() {
+    const url = normalizeUrl(form.dropbox_url);
+    if (!url) {
+      alert("No project files link has been added for this job yet.");
+      return;
+    }
+
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function updatePhase(index: number, updates: Partial<PhaseForm>) {
@@ -165,6 +186,7 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          dropbox_url: normalizeUrl(form.dropbox_url) || null,
           phases: cleanPhases
         })
       });
@@ -257,11 +279,20 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
       <section className="card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-black">{selectedId === "new" ? "New Job" : "Job Info"}</h2>
-          {isAdmin && selectedId !== "new" ? (
-            <button className="btn-danger" disabled={deleting} onClick={deleteJob}>
-              {deleting ? "Deleting..." : "Delete Job"}
-            </button>
-          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            {selectedId !== "new" ? (
+              <button className="btn-primary" onClick={openDropbox}>
+                Open Project Files
+              </button>
+            ) : null}
+
+            {isAdmin && selectedId !== "new" ? (
+              <button className="btn-danger" disabled={deleting} onClick={deleteJob}>
+                {deleting ? "Deleting..." : "Delete Job"}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {!isAdmin ? (
@@ -286,6 +317,33 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
             <input className="input" disabled={!isAdmin} value={form.site_contact} onChange={(e) => setForm({ ...form, site_contact: e.target.value })} />
           </div>
         </div>
+
+        {isAdmin ? (
+          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black">Project Files Link</h3>
+                <p className="text-xs font-bold text-slate-600">
+                  Admin only. Users only see the Open Project Files button.
+                </p>
+              </div>
+
+              {form.dropbox_url ? (
+                <button className="btn-secondary" onClick={openDropbox}>
+                  Test Link
+                </button>
+              ) : null}
+            </div>
+
+            <label className="label">Dropbox / Project Folder URL</label>
+            <input
+              className="input"
+              placeholder="Paste Dropbox folder link here"
+              value={form.dropbox_url}
+              onChange={(e) => setForm({ ...form, dropbox_url: e.target.value })}
+            />
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-2xl border bg-slate-50 p-3">
           <div className="flex items-center justify-between gap-3">
@@ -331,9 +389,6 @@ export function JobsModule({ initialJobs, isAdmin, onJobsChanged }: Props) {
             ))}
           </div>
         </div>
-
-        <label className="label">Dropbox Link</label>
-        <input className="input" disabled={!isAdmin} value={form.dropbox_url} onChange={(e) => setForm({ ...form, dropbox_url: e.target.value })} />
 
         <label className="label">Notes</label>
         <textarea className="input min-h-32" disabled={!isAdmin} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
