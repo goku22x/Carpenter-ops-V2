@@ -24,6 +24,7 @@ type PersonnelWithJob = Personnel & {
 type PhaseLike = NonNullable<Job["job_phases"]>[number];
 
 const QUICK_REQUESTS = ["Survey", "Maintenance", "Mobilization", "Trucking", "Foreman Assignment", "Office"] as const;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function imagePath(value: string | null | undefined) {
   if (!value) return "";
@@ -85,39 +86,59 @@ function parseDate(value?: string | null) {
   return date;
 }
 
-function daysBetween(start: Date, end: Date) {
-  const dayMs = 1000 * 60 * 60 * 24;
-  return Math.round((end.getTime() - start.getTime()) / dayMs);
+function dateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
+function monthTitle(date: Date) {
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-function monthLabel(date: Date) {
-  return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+function isSameDate(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function buildMonthMarkers(start: Date, end: Date) {
-  const markers: { label: string; left: number }[] = [];
-  const totalDays = Math.max(1, daysBetween(start, end));
+function buildMonthDays(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const first = new Date(year, month, 1);
+  const start = new Date(first);
+  start.setDate(start.getDate() - first.getDay());
 
-  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-  if (cursor < start) cursor.setMonth(cursor.getMonth() + 1);
-
-  while (cursor <= end) {
-    const left = Math.max(0, Math.min(100, (daysBetween(start, cursor) / totalDays) * 100));
-    markers.push({ label: monthLabel(cursor), left });
-    cursor.setMonth(cursor.getMonth() + 1);
+  const days: Date[] = [];
+  for (let i = 0; i < 42; i++) {
+    const next = new Date(start);
+    next.setDate(start.getDate() + i);
+    days.push(next);
   }
 
-  if (markers.length === 0) {
-    markers.push({ label: monthLabel(start), left: 0 });
+  return days;
+}
+
+function phaseInitials(name: string | null | undefined) {
+  const clean = (name ?? "").trim();
+  if (!clean) return "PH";
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase();
+}
+
+function getDefaultCalendarMonth(phases: PhaseLike[]) {
+  const dated = phases
+    .map((phase) => parseDate(phase.start_date))
+    .filter((date): date is Date => Boolean(date));
+
+  if (dated.length > 0) {
+    const first = new Date(Math.min(...dated.map((date) => date.getTime())));
+    return new Date(first.getFullYear(), first.getMonth(), 1);
   }
 
-  return markers;
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
 function EquipmentCard({ item }: { item: Equipment }) {
@@ -210,8 +231,10 @@ function PhaseList({ phases }: { phases: PhaseLike[] }) {
   );
 }
 
-function PhaseVisualCalendar({ phases }: { phases: PhaseLike[] }) {
+function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
   const sorted = [...phases].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const [visibleMonth, setVisibleMonth] = useState(() => getDefaultCalendarMonth(sorted));
+
   const datedPhases = sorted
     .map((phase, index) => ({
       phase,
@@ -222,86 +245,114 @@ function PhaseVisualCalendar({ phases }: { phases: PhaseLike[] }) {
     .filter((item): item is { phase: PhaseLike; index: number; start: Date; end: Date } => Boolean(item.start && item.end));
 
   if (datedPhases.length === 0) {
-    return <EmptyBox text="Add phase start/end dates to show the visual schedule." />;
+    return <EmptyBox text="Add phase start/end dates to show the construction calendar." />;
   }
 
-  const minStart = new Date(Math.min(...datedPhases.map((item) => item.start.getTime())));
-  const maxEnd = new Date(Math.max(...datedPhases.map((item) => item.end.getTime())));
-  const scheduleStart = addDays(minStart, -7);
-  const scheduleEnd = addDays(maxEnd, 7);
-  const totalDays = Math.max(1, daysBetween(scheduleStart, scheduleEnd));
-  const markers = buildMonthMarkers(scheduleStart, scheduleEnd);
+  const days = buildMonthDays(visibleMonth);
   const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  const todayInRange = today >= scheduleStart && today <= scheduleEnd;
-  const todayLeft = todayInRange ? (daysBetween(scheduleStart, today) / totalDays) * 100 : 0;
+
+  function previousMonth() {
+    setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1));
+  }
+
+  function nextMonth() {
+    setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1));
+  }
+
+  function resetMonth() {
+    setVisibleMonth(getDefaultCalendarMonth(sorted));
+  }
+
+  function phasesForDay(day: Date) {
+    return datedPhases.filter(({ start, end }) => {
+      const current = new Date(day);
+      current.setHours(12, 0, 0, 0);
+      return current >= start && current <= end;
+    });
+  }
 
   return (
     <div className="rounded-2xl border bg-white p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-black">Visual Phase Schedule</h4>
-        <div className="text-xs font-bold text-slate-500">
-          {formatDate(scheduleStart.toISOString().slice(0, 10))} → {formatDate(scheduleEnd.toISOString().slice(0, 10))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="font-black">Construction Calendar</h4>
+          <p className="text-xs font-bold text-slate-500">
+            Colored phase chips show what is planned on each calendar day.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={previousMonth}>Prev</button>
+          <button className="btn-secondary" onClick={resetMonth}>Project</button>
+          <button className="btn-secondary" onClick={nextMonth}>Next</button>
         </div>
       </div>
 
-      <div className="mt-3 overflow-x-auto">
-        <div className="min-w-[720px]">
-          <div className="relative ml-32 h-8 border-b">
-            {markers.map((marker) => (
-              <div key={`${marker.label}-${marker.left}`} className="absolute top-0" style={{ left: `${marker.left}%` }}>
-                <div className="h-8 border-l border-slate-300 pl-1 text-[11px] font-black text-slate-500">
-                  {marker.label}
-                </div>
-              </div>
-            ))}
+      <div className="mt-3 text-center text-lg font-black">{monthTitle(visibleMonth)}</div>
 
-            {todayInRange ? (
-              <div className="absolute top-0 z-10 h-full border-l-2 border-red-500" style={{ left: `${todayLeft}%` }}>
-                <div className="ml-1 rounded bg-red-500 px-1 text-[10px] font-black text-white">Today</div>
-              </div>
-            ) : null}
+      <div className="mt-3 grid grid-cols-7 overflow-hidden rounded-2xl border">
+        {WEEKDAYS.map((weekday) => (
+          <div key={weekday} className="border-b bg-slate-100 p-2 text-center text-xs font-black uppercase text-slate-600">
+            {weekday}
           </div>
+        ))}
 
-          <div className="mt-2 space-y-3">
-            {datedPhases.map(({ phase, index, start, end }) => {
-              const left = Math.max(0, Math.min(100, (daysBetween(scheduleStart, start) / totalDays) * 100));
-              const width = Math.max(2, Math.min(100 - left, (Math.max(1, daysBetween(start, end)) / totalDays) * 100));
-              const percent = Math.max(0, Math.min(100, phase.progress_percent ?? 0));
+        {days.map((day) => {
+          const activePhases = phasesForDay(day);
+          const inMonth = day.getMonth() === visibleMonth.getMonth();
+          const isToday = isSameDate(day, today);
 
-              return (
-                <div key={phase.id ?? `${phase.name}-${index}`} className="grid grid-cols-[120px_1fr] items-center gap-3">
-                  <div className="truncate text-xs font-black">{phase.name || phase.phase}</div>
+          return (
+            <div
+              key={dateKey(day)}
+              className={`min-h-28 border-b border-r p-2 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-400"} ${isToday ? "ring-2 ring-red-500 ring-inset" : ""}`}
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span className={`text-xs font-black ${isToday ? "rounded-full bg-red-600 px-2 py-1 text-white" : ""}`}>
+                  {day.getDate()}
+                </span>
 
-                  <div className="relative h-9 rounded-xl bg-slate-100">
+                {activePhases.length > 0 ? (
+                  <span className="text-[10px] font-black text-slate-400">
+                    {activePhases.length}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="space-y-1">
+                {activePhases.slice(0, 4).map(({ phase, index }) => {
+                  const percent = Math.max(0, Math.min(100, phase.progress_percent ?? 0));
+                  const label = phaseInitials(phase.name || phase.phase);
+
+                  return (
                     <div
-                      className={`absolute top-1 h-7 rounded-xl ${phaseColorClass(index)} shadow-sm`}
-                      style={{ left: `${left}%`, width: `${width}%` }}
-                      title={`${phase.name || phase.phase}: ${formatDate(phase.start_date)} - ${formatDate(phase.end_date)}`}
+                      key={`${dateKey(day)}-${phase.id ?? index}`}
+                      className={`truncate rounded-md px-1.5 py-1 text-[10px] font-black text-black ${phaseColorClass(index)}`}
+                      title={`${phase.name || phase.phase} • ${formatDate(phase.start_date)} - ${formatDate(phase.end_date)} • ${percent}%`}
                     >
-                      <div
-                        className="h-full rounded-xl bg-black/10"
-                        style={{ width: `${percent}%` }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center truncate px-2 text-[10px] font-black text-black">
-                        {percent}%
-                      </div>
+                      {label} {percent}%
                     </div>
+                  );
+                })}
 
-                    {todayInRange ? (
-                      <div className="absolute top-0 h-full border-l-2 border-red-500" style={{ left: `${todayLeft}%` }} />
-                    ) : null}
+                {activePhases.length > 4 ? (
+                  <div className="text-[10px] font-black text-slate-500">
+                    +{activePhases.length - 4} more
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-          <div className="mt-3 flex items-center gap-2 text-xs font-bold text-slate-500">
-            <span className="h-3 w-3 rounded bg-black/10" />
-            darker fill = % complete
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sorted.map((phase, index) => (
+          <div key={phase.id ?? `${phase.name}-${index}`} className="flex items-center gap-1 rounded-full border bg-white px-2 py-1 text-[10px] font-black">
+            <span className={`h-3 w-3 rounded-full ${phaseColorClass(index)}`} />
+            <span>{phaseInitials(phase.name || phase.phase)} = {phase.name || phase.phase}</span>
           </div>
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -404,7 +455,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       <div className="card">
         <h2 className="text-2xl font-black">Operations Board</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Home screen for daily operations. Expand a job to see project files, visual phase schedule, and quick request buttons.
+          Home screen for daily operations. Expand a job to see project files, construction calendar, and quick request buttons.
         </p>
       </div>
 
@@ -491,7 +542,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                       </div>
                     </div>
 
-                    <PhaseVisualCalendar phases={sortedPhases} />
+                    <PhaseMonthCalendar phases={sortedPhases} />
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-3">
