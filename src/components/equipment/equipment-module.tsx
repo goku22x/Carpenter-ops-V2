@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Equipment, Job } from "@/lib/types";
 import { EQUIPMENT_STATUSES, EQUIPMENT_TYPES } from "@/lib/equipment-types";
 
 type Props = {
-  initialEquipment: Equipment[];
+  equipment: Equipment[];
   jobs: Job[];
   isAdmin: boolean;
+  onEquipmentChanged: () => Promise<void> | void;
 };
 
 const emptyForm = {
@@ -28,8 +29,7 @@ function imagePath(value: string | null | undefined) {
   return `/equipment-images/${value}`;
 }
 
-export function EquipmentModule({ initialEquipment, jobs, isAdmin }: Props) {
-  const [equipment, setEquipment] = useState<Equipment[]>(initialEquipment);
+export function EquipmentModule({ equipment, jobs, isAdmin, onEquipmentChanged }: Props) {
   const [selectedId, setSelectedId] = useState<string | "new">(equipment[0]?.id ?? "new");
   const selected = equipment.find((item) => item.id === selectedId);
   const [saving, setSaving] = useState(false);
@@ -50,6 +50,16 @@ export function EquipmentModule({ initialEquipment, jobs, isAdmin }: Props) {
 
   const jobNameById = useMemo(() => new Map(jobs.map((job) => [job.id, job.name])), [jobs]);
 
+  useEffect(() => {
+    if (selectedId === "new") return;
+
+    const freshSelected = equipment.find((item) => item.id === selectedId);
+
+    if (!freshSelected && equipment.length > 0) {
+      selectItem(equipment[0]);
+    }
+  }, [equipment, selectedId]);
+
   function selectItem(item: Equipment | "new") {
     if (item === "new") {
       setSelectedId("new");
@@ -68,14 +78,6 @@ export function EquipmentModule({ initialEquipment, jobs, isAdmin }: Props) {
       photo_url: item.photo_url ?? "",
       notes: item.notes ?? ""
     });
-  }
-
-  async function refreshEquipment() {
-    const res = await fetch("/api/equipment", { cache: "no-store" });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error ?? "Could not load equipment.");
-    setEquipment(data);
-    return data as Equipment[];
   }
 
   async function saveEquipment() {
@@ -105,9 +107,11 @@ export function EquipmentModule({ initialEquipment, jobs, isAdmin }: Props) {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error ?? "Save failed.");
 
-      const updated = await refreshEquipment();
-      const saved = updated.find((item) => item.id === data.id);
-      if (saved) selectItem(saved);
+      await onEquipmentChanged();
+
+      if (data?.id) {
+        setSelectedId(data.id);
+      }
 
       alert("Equipment saved.");
     } catch (err) {
