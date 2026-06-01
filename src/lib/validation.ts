@@ -48,27 +48,25 @@ export const personnelPayloadSchema = z.object({
   active: z.boolean().default(true)
 });
 
-export const workRequestSchema = z.object({
+export const workOrderPayloadSchema = z.object({
   job_id: z.string().uuid().optional().nullable(),
-  department: z.enum([
-    "Earthwork",
-    "Storm Drain",
-    "Sewer",
-    "Water",
-    "Electrical",
-    "Curb",
+  work_type: z.enum([
     "Survey",
     "Maintenance",
     "Mobilization",
+    "Trucking",
+    "Foreman Assignment",
     "Office",
-    "Trucks"
+    "General"
   ]),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional().nullable(),
   priority: z.enum(["Critical", "High", "Medium", "Low"]).default("Medium"),
   status: z.enum(["New", "Assigned", "In Progress", "Waiting", "Complete", "Closed"]).default("New"),
   assigned_personnel_id: z.string().uuid().optional().nullable(),
-  equipment_id: z.string().uuid().optional().nullable(),
-  equipment_type_requested: z.string().optional().nullable(),
-  due_at: z.string().datetime().optional().nullable(),
-  description: z.string().min(1, "Description is required"),
-  dropbox_url: z.string().optional().nullable()
+  related_equipment_id: z.string().uuid().optional().nullable(),
+  due_date: z.string().optional().nullable(),
+  custom_fields: z.record(z.string(), z.unknown()).optional().nullable()
 });
+
+export const workRequestSchema = workOrderPayloadSchema;

@@ -69,3 +69,21 @@ export type Personnel = {
   notes: string | null;
   active: boolean;
 };
+
+export type WorkOrder = {
+  id: string;
+  organization_id: string;
+  job_id: string | null;
+  work_type: string;
+  title: string;
+  description: string | null;
+  priority: string;
+  status: string;
+  assigned_personnel_id: string | null;
+  requested_by_profile_id: string | null;
+  related_equipment_id: string | null;
+  due_date: string | null;
+  custom_fields: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+};
