@@ -113,15 +113,21 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
       ) : null}
 
       {view === "work" ? (
-        <WorkOrdersModule workOrders={workOrders} jobs={jobs} equipment={equipment} personnel={personnel} isAdmin={profile.role === "admin"} onWorkOrdersChanged={refreshWorkOrders} />
+        <WorkOrdersModule workOrders={workOrders} jobs={jobs} equipment={equipment} personnel={personnel} isAdmin={profile.role === "admin"} onWorkOrdersChanged={async () => {
+            await refreshWorkOrders();
+          }} />
       ) : null}
 
       {view === "personnel" ? (
-        <PersonnelModule personnel={personnel} isAdmin={profile.role === "admin"} onPersonnelChanged={refreshPersonnel} />
+        <PersonnelModule personnel={personnel} isAdmin={profile.role === "admin"} onPersonnelChanged={async () => {
+            await refreshPersonnel();
+          }} />
       ) : null}
 
       {view === "equipment" ? (
-        <EquipmentModule equipment={equipment} jobs={jobs} isAdmin={profile.role === "admin"} onEquipmentChanged={refreshEquipment} />
+        <EquipmentModule equipment={equipment} jobs={jobs} isAdmin={profile.role === "admin"} onEquipmentChanged={async () => {
+            await refreshEquipment();
+          }} />
       ) : null}
 
       {view === "operations" ? (
