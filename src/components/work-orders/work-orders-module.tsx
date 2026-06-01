@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Equipment, Job, Personnel, WorkOrder } from "@/lib/types";
+import { EQUIPMENT_TYPES } from "@/lib/equipment-types";
 import {
   WORK_ORDER_PRIORITIES,
   WORK_ORDER_STATUSES,
@@ -31,6 +32,16 @@ const emptyForm = {
   custom_fields: {} as Record<string, string>
 };
 
+const TRUCK_TYPES = [
+  "Quad Axle Dump Truck",
+  "Triaxle Dump Truck",
+  "Dump Truck",
+  "Lowboy Truck",
+  "Lowboy Trailer",
+  "Lowboy Truck and Trailer",
+  "Other"
+];
+
 function getDefaultTitle(workType: string) {
   switch (workType) {
     case "Survey":
@@ -38,11 +49,11 @@ function getDefaultTitle(workType: string) {
     case "Maintenance":
       return "Maintenance Request";
     case "Mobilization":
-      return "Move Equipment";
+      return "Mobilization Request";
     case "Trucking":
       return "Trucking Request";
     case "Foreman Assignment":
-      return "Assign Foreman";
+      return "Foreman Assignment";
     case "Office":
       return "Office Request";
     default:
@@ -53,20 +64,25 @@ function getDefaultTitle(workType: string) {
 function getSimplePrompt(workType: string) {
   switch (workType) {
     case "Survey":
-      return "What do you need surveyed or staked?";
+      return "Location / description. Example: Stake MH-12 to MH-15 sewer.";
     case "Maintenance":
-      return "What is wrong?";
+      return "Describe the issue. Example: Hydraulic leak under cab.";
     case "Mobilization":
-      return "What needs moved?";
+      return "Anything special about the move?";
     case "Trucking":
-      return "What hauling/trucking do you need?";
+      return "Anything special about the haul?";
     case "Foreman Assignment":
-      return "Who needs assigned to this job?";
+      return "Notes about crew, schedule, or job needs.";
     case "Office":
       return "What do you need from the office?";
     default:
       return "What needs done?";
   }
+}
+
+function inferJobFromEquipment(equipment: Equipment[], equipmentId: string) {
+  const item = equipment.find((eq) => eq.id === equipmentId);
+  return item?.current_job_id ?? "";
 }
 
 function CustomFields({
@@ -86,16 +102,19 @@ function CustomFields({
           <select className="input" value={fields.survey_type ?? ""} onChange={(e) => update("survey_type", e.target.value)}>
             <option value="">Select</option>
             <option value="Stakeout">Stakeout</option>
-            <option value="Topo / Asbuilt">Topo / Asbuilt</option>
+            <option value="As-Built">As-Built</option>
+            <option value="Topo">Topo</option>
             <option value="Control">Control</option>
-            <option value="Machine Model / Surface Check">Machine Model / Surface Check</option>
+            <option value="Model Check">Model Check</option>
             <option value="Other">Other</option>
           </select>
         </div>
+
         <div>
-          <label className="label">Area / Station / Line</label>
-          <input className="input" placeholder="MH-12 to MH-15, north entrance curb, etc." value={fields.area ?? ""} onChange={(e) => update("area", e.target.value)} />
+          <label className="label">Location / Station / Line</label>
+          <input className="input" placeholder="MH-12 to MH-15, north entrance curb, building pad, etc." value={fields.location ?? ""} onChange={(e) => update("location", e.target.value)} />
         </div>
+
         <div>
           <label className="label">Plan / Dropbox Link</label>
           <input className="input" placeholder="Optional" value={fields.plan_link ?? ""} onChange={(e) => update("plan_link", e.target.value)} />
@@ -116,10 +135,12 @@ function CustomFields({
             <option value="Barely / Needs checked">Barely / Needs checked</option>
           </select>
         </div>
+
         <div>
           <label className="label">Issue</label>
-          <input className="input" placeholder="Hydraulic leak, flat tire, won't start" value={fields.issue ?? ""} onChange={(e) => update("issue", e.target.value)} />
+          <input className="input" placeholder="Hydraulic leak, flat tire, won't start, AC out, etc." value={fields.issue ?? ""} onChange={(e) => update("issue", e.target.value)} />
         </div>
+
         <div>
           <label className="label">Photo / Notes Link</label>
           <input className="input" placeholder="Optional" value={fields.photo_link ?? ""} onChange={(e) => update("photo_link", e.target.value)} />
@@ -132,13 +153,23 @@ function CustomFields({
     return (
       <div className="grid gap-3">
         <div>
-          <label className="label">From</label>
-          <input className="input" placeholder="Current job, yard, shop, etc." value={fields.from_location ?? ""} onChange={(e) => update("from_location", e.target.value)} />
+          <label className="label">Equipment Type Needed</label>
+          <select className="input" value={fields.equipment_type_needed ?? ""} onChange={(e) => update("equipment_type_needed", e.target.value)}>
+            <option value="">Select type</option>
+            {EQUIPMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
         </div>
+
         <div>
-          <label className="label">To</label>
-          <input className="input" placeholder="Destination job or site" value={fields.to_location ?? ""} onChange={(e) => update("to_location", e.target.value)} />
+          <label className="label">Quantity</label>
+          <input className="input" placeholder="1, 2, etc." value={fields.quantity ?? ""} onChange={(e) => update("quantity", e.target.value)} />
         </div>
+
+        <div>
+          <label className="label">From</label>
+          <input className="input" placeholder="Yard, shop, current job, unknown" value={fields.from_location ?? ""} onChange={(e) => update("from_location", e.target.value)} />
+        </div>
+
         <div>
           <label className="label">When needed?</label>
           <input className="input" placeholder="Tomorrow morning, before lunch, ASAP" value={fields.when_needed ?? ""} onChange={(e) => update("when_needed", e.target.value)} />
@@ -151,9 +182,29 @@ function CustomFields({
     return (
       <div className="grid gap-3">
         <div>
+          <label className="label">Truck Type</label>
+          <select className="input" value={fields.truck_type ?? ""} onChange={(e) => update("truck_type", e.target.value)}>
+            <option value="">Select truck type</option>
+            {TRUCK_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label"># of Trucks</label>
+            <input className="input" placeholder="Example: 4" value={fields.truck_count ?? ""} onChange={(e) => update("truck_count", e.target.value)} />
+          </div>
+          <div>
+            <label className="label"># of Loads</label>
+            <input className="input" placeholder="Example: 120" value={fields.load_count ?? ""} onChange={(e) => update("load_count", e.target.value)} />
+          </div>
+        </div>
+
+        <div>
           <label className="label">Material</label>
           <input className="input" placeholder="Dirt, rock, asphalt, select fill, etc." value={fields.material ?? ""} onChange={(e) => update("material", e.target.value)} />
         </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label">From</label>
@@ -164,15 +215,10 @@ function CustomFields({
             <input className="input" value={fields.to_location ?? ""} onChange={(e) => update("to_location", e.target.value)} />
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label">Truck Count</label>
-            <input className="input" placeholder="4 quads" value={fields.truck_count ?? ""} onChange={(e) => update("truck_count", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Start Time</label>
-            <input className="input" placeholder="7 AM" value={fields.start_time ?? ""} onChange={(e) => update("start_time", e.target.value)} />
-          </div>
+
+        <div>
+          <label className="label">Start Time</label>
+          <input className="input" placeholder="Example: 7 AM" value={fields.start_time ?? ""} onChange={(e) => update("start_time", e.target.value)} />
         </div>
       </div>
     );
@@ -191,7 +237,7 @@ function CustomFields({
         </div>
         <div>
           <label className="label">Crew Notes</label>
-          <input className="input" placeholder="Pipe crew, grading crew, etc." value={fields.crew_notes ?? ""} onChange={(e) => update("crew_notes", e.target.value)} />
+          <input className="input" placeholder="Pipe crew, grading crew, concrete crew, etc." value={fields.crew_notes ?? ""} onChange={(e) => update("crew_notes", e.target.value)} />
         </div>
       </div>
     );
@@ -281,7 +327,10 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     setForm({
       ...form,
       work_type: type,
-      title: form.title || getDefaultTitle(type),
+      title: getDefaultTitle(type),
+      description: "",
+      related_equipment_id: "",
+      job_id: "",
       custom_fields: {}
     });
   }
@@ -296,8 +345,31 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
     });
   }
 
+  function updateRelatedEquipment(equipmentId: string) {
+    const inferredJobId = inferJobFromEquipment(equipment, equipmentId);
+
+    setForm({
+      ...form,
+      related_equipment_id: equipmentId,
+      job_id: form.work_type === "Maintenance" && inferredJobId ? inferredJobId : form.job_id
+    });
+  }
+
   async function saveWorkOrder() {
     const title = form.title.trim() || getDefaultTitle(form.work_type);
+
+    if (form.work_type === "Maintenance" && !form.related_equipment_id) {
+      return alert("Maintenance requests need equipment selected.");
+    }
+
+    if (form.work_type === "Mobilization" && (!form.job_id || !form.custom_fields.equipment_type_needed)) {
+      return alert("Mobilization requests need a job and equipment type.");
+    }
+
+    if (form.work_type === "Trucking" && (!form.job_id || !form.custom_fields.truck_count || !form.custom_fields.load_count)) {
+      return alert("Trucking requests need job, # of trucks, and # of loads.");
+    }
+
     if (!form.description.trim()) return alert("Please answer the main question.");
 
     setSaving(true);
@@ -358,6 +430,9 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
       setDeleting(false);
     }
   }
+
+  const showJobFirst = form.work_type !== "Maintenance";
+  const showEquipmentFirst = form.work_type === "Maintenance";
 
   return (
     <section className="mt-4 grid gap-4 lg:grid-cols-[440px_1fr]">
@@ -422,11 +497,41 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
           ))}
         </div>
 
-        <label className="label">Job</label>
-        <select className="input" value={form.job_id} onChange={(event) => setForm({ ...form, job_id: event.target.value })}>
-          <option value="">No job / general</option>
-          {jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
-        </select>
+        {showEquipmentFirst ? (
+          <>
+            <label className="label">Equipment</label>
+            <select className="input text-base" value={form.related_equipment_id} onChange={(event) => updateRelatedEquipment(event.target.value)}>
+              <option value="">Select equipment</option>
+              {equipment.map((item) => <option key={item.id} value={item.id}>{item.name} #{item.equipment_number ?? "—"}</option>)}
+            </select>
+
+            <label className="label">Job</label>
+            <select className="input" value={form.job_id} onChange={(event) => setForm({ ...form, job_id: event.target.value })}>
+              <option value="">No job / unknown</option>
+              {jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
+            </select>
+          </>
+        ) : null}
+
+        {showJobFirst ? (
+          <div>
+            <label className="label">Job</label>
+            <select className="input text-base" value={form.job_id} onChange={(event) => setForm({ ...form, job_id: event.target.value })}>
+              <option value="">No job / general</option>
+              {jobs.map((job) => <option key={job.id} value={job.id}>{job.name}</option>)}
+            </select>
+          </div>
+        ) : null}
+
+        {form.work_type !== "Maintenance" ? (
+          <div>
+            <label className="label">Related Equipment</label>
+            <select className="input" value={form.related_equipment_id} onChange={(event) => setForm({ ...form, related_equipment_id: event.target.value })}>
+              <option value="">None / equipment type only</option>
+              {equipment.map((item) => <option key={item.id} value={item.id}>{item.name} #{item.equipment_number ?? "—"}</option>)}
+            </select>
+          </div>
+        ) : null}
 
         <label className="label">Main Question</label>
         <textarea
@@ -462,22 +567,11 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label">Assign To</label>
-            <select className="input" value={form.assigned_personnel_id} onChange={(event) => setForm({ ...form, assigned_personnel_id: event.target.value })}>
-              <option value="">Unassigned</option>
-              {personnel.map((person) => <option key={person.id} value={person.id}>{person.full_name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Related Equipment</label>
-            <select className="input" value={form.related_equipment_id} onChange={(event) => setForm({ ...form, related_equipment_id: event.target.value })}>
-              <option value="">None</option>
-              {equipment.map((item) => <option key={item.id} value={item.id}>{item.name} #{item.equipment_number ?? "—"}</option>)}
-            </select>
-          </div>
-        </div>
+        <label className="label">Assign To</label>
+        <select className="input" value={form.assigned_personnel_id} onChange={(event) => setForm({ ...form, assigned_personnel_id: event.target.value })}>
+          <option value="">Unassigned</option>
+          {personnel.map((person) => <option key={person.id} value={person.id}>{person.full_name}</option>)}
+        </select>
 
         <div className="mt-4 rounded-2xl border bg-slate-50 p-3">
           <h3 className="font-black">{form.work_type} Details</h3>
