@@ -459,6 +459,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
   const [workOrderUpdateNote, setWorkOrderUpdateNote] = useState("");
   const [workOrderSendBackNote, setWorkOrderSendBackNote] = useState("");
+  const [workOrderCompletionEquipmentNumber, setWorkOrderCompletionEquipmentNumber] = useState("");
   const [workOrderActionSaving, setWorkOrderActionSaving] = useState(false);
 
   const activeJobs = jobs.filter((job) => job.active !== false);
@@ -811,6 +812,25 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   async function completeWorkOrder(workOrderId: string) {
     const order = workOrders.find((item) => item.id === workOrderId);
     if (!order) return alert("Work order not found.");
+
+    if (order.work_type === "Mobilization") {
+      const equipmentNumber = workOrderCompletionEquipmentNumber.trim();
+      if (!equipmentNumber) return alert("Enter the equipment number before completing this mobilization.");
+
+      const nextDescription = appendWorkOrderUpdate(order.description, "Completed", `Equipment #${equipmentNumber}`);
+      setWorkOrderCompletionEquipmentNumber("");
+      setWorkOrderUpdateNote("");
+
+      await patchWorkOrder(workOrderId, {
+        description: nextDescription,
+        status: "Complete",
+        custom_fields: {
+          ...(order.custom_fields ?? {}),
+          completed_equipment_number: equipmentNumber
+        }
+      }, "Mobilization completed.");
+      return;
+    }
 
     const nextDescription = appendWorkOrderUpdate(order.description, "Completed", workOrderUpdateNote.trim() || "Marked complete.");
     setWorkOrderUpdateNote("");
@@ -1586,6 +1606,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                     setSelectedWorkOrderId(selected ? null : order.id);
                                     setWorkOrderUpdateNote("");
                                     setWorkOrderSendBackNote("");
+                                    setWorkOrderCompletionEquipmentNumber("");
                                   }}
                                 >
                                   <div className="flex items-center justify-between gap-2">
@@ -1638,18 +1659,37 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                       </div>
                                     ) : null}
 
-                                    <label className="label">Update / Completion Note</label>
-                                    <textarea
-                                      className="input min-h-20 bg-white"
-                                      placeholder="Type progress update, completion note, or what was done..."
-                                      value={workOrderUpdateNote}
-                                      onChange={(event) => setWorkOrderUpdateNote(event.target.value)}
-                                    />
+                                    {order.work_type === "Mobilization" && !isComplete ? (
+                                      <div className="rounded-xl border border-green-300 bg-green-50 p-3">
+                                        <label className="label mt-0">Equipment Number to Complete *</label>
+                                        <input
+                                          className="input bg-white text-base"
+                                          placeholder="Example: 315, EX-12, T23"
+                                          value={workOrderCompletionEquipmentNumber}
+                                          onChange={(event) => setWorkOrderCompletionEquipmentNumber(event.target.value)}
+                                        />
+                                        <p className="mt-1 text-xs font-bold text-green-900">
+                                          For mobilizations, enter the equipment number and send it complete.
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <label className="label">Update / Completion Note</label>
+                                        <textarea
+                                          className="input min-h-20 bg-white"
+                                          placeholder="Type progress update, completion note, or what was done..."
+                                          value={workOrderUpdateNote}
+                                          onChange={(event) => setWorkOrderUpdateNote(event.target.value)}
+                                        />
+                                      </>
+                                    )}
 
                                     <div className="flex flex-wrap gap-2">
-                                      <button className="btn-secondary" disabled={workOrderActionSaving} onClick={() => addWorkOrderUpdate(order.id)}>
-                                        Add Update
-                                      </button>
+                                      {!(order.work_type === "Mobilization" && !isComplete) ? (
+                                        <button className="btn-secondary" disabled={workOrderActionSaving} onClick={() => addWorkOrderUpdate(order.id)}>
+                                          Add Update
+                                        </button>
+                                      ) : null}
 
                                       {isComplete ? (
                                         <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => reopenWorkOrder(order.id)}>
@@ -1657,7 +1697,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                         </button>
                                       ) : (
                                         <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => completeWorkOrder(order.id)}>
-                                          Mark Complete
+                                          {order.work_type === "Mobilization" ? "Send Complete" : "Mark Complete"}
                                         </button>
                                       )}
                                     </div>
