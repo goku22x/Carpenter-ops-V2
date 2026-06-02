@@ -96,6 +96,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
   const [typeFilter, setTypeFilter] = useState("All");
   const [updateNote, setUpdateNote] = useState("");
   const [sendBackNote, setSendBackNote] = useState("");
+  const [completionEquipmentNumber, setCompletionEquipmentNumber] = useState("");
 
   const [form, setForm] = useState(() =>
     selected
@@ -172,6 +173,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
   function selectOrder(order: WorkOrder | "new") {
     setUpdateNote("");
     setSendBackNote("");
+    setCompletionEquipmentNumber("");
 
     if (order === "new") {
       setSelectedId("new");
@@ -335,6 +337,28 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
   async function markComplete() {
     if (selectedId === "new") return alert("Save the work order first.");
 
+    if (form.work_type === "Mobilization") {
+      const equipmentNumber = completionEquipmentNumber.trim();
+      if (!equipmentNumber) return alert("Enter the equipment number before completing this mobilization.");
+
+      const nextDescription = appendUpdate(form.description, "Completed", `Equipment #${equipmentNumber}`);
+      setCompletionEquipmentNumber("");
+      setUpdateNote("");
+
+      await savePayload(
+        {
+          description: nextDescription,
+          status: "Complete",
+          custom_fields: {
+            ...form.custom_fields,
+            completed_equipment_number: equipmentNumber
+          }
+        },
+        "Mobilization completed."
+      );
+      return;
+    }
+
     const note = updateNote.trim();
     const nextDescription = note
       ? appendUpdate(form.description, "Completed", note)
@@ -473,18 +497,37 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
       <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-3">
         <h3 className="font-black">Work Order Actions</h3>
 
-        <label className="label">Update / Completion Note</label>
-        <textarea
-          className="input min-h-20 bg-white"
-          placeholder="Type progress update, completion note, or what was done..."
-          value={updateNote}
-          onChange={(e) => setUpdateNote(e.target.value)}
-        />
+        {form.work_type === "Mobilization" && !isCompletedStatus(form.status) ? (
+          <div className="rounded-xl border border-green-300 bg-green-50 p-3">
+            <label className="label mt-0">Equipment Number to Complete *</label>
+            <input
+              className="input bg-white text-base"
+              placeholder="Example: 315, EX-12, T23"
+              value={completionEquipmentNumber}
+              onChange={(e) => setCompletionEquipmentNumber(e.target.value)}
+            />
+            <p className="mt-1 text-xs font-bold text-green-900">
+              For mobilizations, enter the equipment number and send it complete.
+            </p>
+          </div>
+        ) : (
+          <>
+            <label className="label">Update / Completion Note</label>
+            <textarea
+              className="input min-h-20 bg-white"
+              placeholder="Type progress update, completion note, or what was done..."
+              value={updateNote}
+              onChange={(e) => setUpdateNote(e.target.value)}
+            />
+          </>
+        )}
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <button className="btn-secondary" disabled={quickSaving} onClick={addUpdate}>
-            Add Update
-          </button>
+          {!(form.work_type === "Mobilization" && !isCompletedStatus(form.status)) ? (
+            <button className="btn-secondary" disabled={quickSaving} onClick={addUpdate}>
+              Add Update
+            </button>
+          ) : null}
 
           {isCompletedStatus(form.status) ? (
             <button className="btn-primary" disabled={quickSaving} onClick={reopenWorkOrder}>
@@ -492,7 +535,7 @@ export function WorkOrdersModule({ workOrders, jobs, equipment, personnel, isAdm
             </button>
           ) : (
             <button className="btn-primary" disabled={quickSaving} onClick={markComplete}>
-              Mark Complete
+              {form.work_type === "Mobilization" ? "Send Complete" : "Mark Complete"}
             </button>
           )}
         </div>
