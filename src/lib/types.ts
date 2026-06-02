@@ -85,3 +85,41 @@ export type WorkOrder = {
   created_at?: string;
   updated_at?: string;
 };
+
+
+export type TimeEntry = {
+  id: string;
+  organization_id: string;
+  time_sheet_id: string;
+  employee_personnel_id: string | null;
+  employee_profile_id: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  lunch_minutes: number;
+  regular_hours: number | null;
+  overtime_hours: number | null;
+  notes: string | null;
+  status: string;
+  employee_signed_at: string | null;
+  created_at?: string;
+  updated_at?: string;
+  personnel?: Personnel | null;
+  profiles?: Profile | null;
+};
+
+export type TimeSheet = {
+  id: string;
+  organization_id: string;
+  foreman_profile_id: string | null;
+  job_id: string | null;
+  work_date: string;
+  status: string;
+  notes: string | null;
+  submitted_at: string | null;
+  approved_by_profile_id: string | null;
+  approved_at: string | null;
+  created_at?: string;
+  updated_at?: string;
+  jobs?: Job | null;
+  time_entries?: TimeEntry[];
+};
