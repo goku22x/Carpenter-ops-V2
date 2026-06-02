@@ -214,6 +214,204 @@ function getDefaultCalendarMonth(phases: PhaseLike[]) {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
+function isWorkOrderComplete(order: WorkOrder) {
+  return ["Complete", "Closed"].includes(order.status);
+}
+
+function assignmentDateLabel(date: Date) {
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
+function MyOperationsCalendar({
+  currentPerson,
+  jobs,
+  workOrders,
+  onOpenWorkOrders
+}: {
+  currentPerson: PersonnelWithJob | null;
+  jobs: Job[];
+  workOrders: WorkOrder[];
+  onOpenWorkOrders?: () => void;
+}) {
+  const today = new Date();
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const days = buildMonthDays(visibleMonth);
+  const jobNameById = new Map(jobs.map((job) => [job.id, job.name]));
+
+  const assignedJobIds = currentPerson
+    ? [currentPerson.current_job_id, currentPerson.assigned_job_id].filter((value): value is string => Boolean(value))
+    : [];
+
+  const assignedJobs = assignedJobIds
+    .map((jobId) => jobs.find((job) => job.id === jobId))
+    .filter((job): job is Job => Boolean(job && job.active !== false));
+
+  const myOpenWorkOrders = currentPerson
+    ? workOrders.filter((order) => order.assigned_personnel_id === currentPerson.id && !isWorkOrderComplete(order))
+    : [];
+
+  const workOrdersByDate = useMemo(() => {
+    const map = new Map<string, WorkOrder[]>();
+
+    for (const order of myOpenWorkOrders) {
+      if (!order.due_date) continue;
+      const current = map.get(order.due_date) ?? [];
+      current.push(order);
+      map.set(order.due_date, current);
+    }
+
+    return map;
+  }, [myOpenWorkOrders]);
+
+  const todaysWorkOrders = workOrdersByDate.get(dateKey(today)) ?? [];
+  const unscheduledWorkOrders = myOpenWorkOrders.filter((order) => !order.due_date);
+
+  function previousMonth() {
+    setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1));
+  }
+
+  function nextMonth() {
+    setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1));
+  }
+
+  function goToToday() {
+    const now = new Date();
+    setVisibleMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+  }
+
+  return (
+    <section className="rounded-3xl border-b-8 border-blue-700 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-black uppercase tracking-wide text-blue-700">Today</div>
+          <h3 className="text-2xl font-black">{assignmentDateLabel(today)}</h3>
+          <p className="mt-1 text-sm font-bold text-slate-500">
+            {currentPerson ? `Assignments for ${currentPerson.full_name}` : "No Personnel record is linked to this login yet."}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={previousMonth}>Prev</button>
+          <button className="btn-primary" onClick={goToToday}>Current Date</button>
+          <button className="btn-secondary" onClick={nextMonth}>Next</button>
+        </div>
+      </div>
+
+      {!currentPerson ? (
+        <div className="mt-3 rounded-2xl border border-yellow-300 bg-yellow-50 p-3 text-sm font-bold text-yellow-900">
+          Link this login to Personnel by matching the Personnel email to the signed-in user email.
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_2fr]">
+        <div className="space-y-3 rounded-2xl border bg-slate-50 p-3">
+          <div>
+            <h4 className="font-black">Today's Assignments</h4>
+            {assignedJobs.length === 0 && todaysWorkOrders.length === 0 ? (
+              <p className="mt-2 text-sm font-bold text-slate-500">No job or dated work order assigned for today.</p>
+            ) : null}
+
+            {assignedJobs.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {assignedJobs.map((job) => (
+                  <div key={job.id} className="rounded-xl border border-blue-200 bg-blue-50 p-2 text-sm">
+                    <div className="text-[10px] font-black uppercase text-blue-700">Assigned Job</div>
+                    <div className="font-black">{job.name}</div>
+                    <div className="text-xs font-bold text-slate-500">{job.address || "No address"}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {todaysWorkOrders.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {todaysWorkOrders.map((order) => (
+                  <button
+                    key={order.id}
+                    className={`block w-full rounded-xl border p-2 text-left text-sm ${getWorkOrderTypeColor(order.work_type)}`}
+                    onClick={onOpenWorkOrders}
+                    title={order.description ?? order.title}
+                  >
+                    <div className="text-[10px] font-black uppercase">Due Today</div>
+                    <div className="font-black">{order.work_type}: {order.job_id ? jobNameById.get(order.job_id) ?? "Job" : "No job"}</div>
+                    <div className="truncate text-xs font-bold">{order.description ?? order.title}</div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {unscheduledWorkOrders.length > 0 ? (
+            <div>
+              <h4 className="font-black">Open, No Due Date</h4>
+              <div className="mt-2 space-y-2">
+                {unscheduledWorkOrders.slice(0, 5).map((order) => (
+                  <button key={order.id} className="block w-full rounded-xl border bg-white p-2 text-left text-xs font-bold" onClick={onOpenWorkOrders}>
+                    {order.work_type}: {order.job_id ? jobNameById.get(order.job_id) ?? "Job" : "No job"}
+                  </button>
+                ))}
+                {unscheduledWorkOrders.length > 5 ? (
+                  <button className="text-xs font-black text-blue-700" onClick={onOpenWorkOrders}>+{unscheduledWorkOrders.length - 5} more</button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border bg-white p-3">
+          <div className="mb-3 text-center text-lg font-black">{monthTitle(visibleMonth)}</div>
+          <div className="grid grid-cols-7 overflow-hidden rounded-2xl border">
+            {WEEKDAYS.map((weekday) => (
+              <div key={weekday} className="border-b bg-slate-100 p-2 text-center text-xs font-black uppercase text-slate-600">
+                {weekday}
+              </div>
+            ))}
+
+            {days.map((day) => {
+              const key = dateKey(day);
+              const orders = workOrdersByDate.get(key) ?? [];
+              const inMonth = day.getMonth() === visibleMonth.getMonth();
+              const isToday = isSameDate(day, today);
+
+              return (
+                <div key={key} className={`min-h-24 border-b border-r p-2 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-400"} ${isToday ? "ring-2 ring-blue-600 ring-inset" : ""}`}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className={`text-xs font-black ${isToday ? "rounded-full bg-blue-700 px-2 py-1 text-white" : ""}`}>{day.getDate()}</span>
+                    {orders.length > 0 ? <span className="rounded-full bg-carpenter-red px-2 py-1 text-[10px] font-black text-white">{orders.length}</span> : null}
+                  </div>
+
+                  <div className="space-y-1">
+                    {isToday && assignedJobs.length > 0 ? (
+                      <div className="truncate rounded-lg bg-blue-100 px-2 py-1 text-[10px] font-black text-blue-800">
+                        {assignedJobs.length} assigned job{assignedJobs.length === 1 ? "" : "s"}
+                      </div>
+                    ) : null}
+
+                    {orders.slice(0, 3).map((order) => (
+                      <button key={order.id} className={`block w-full truncate rounded-lg border px-2 py-1 text-left text-[10px] font-black ${getWorkOrderTypeColor(order.work_type)}`} onClick={onOpenWorkOrders}>
+                        {order.work_type}: {order.job_id ? jobNameById.get(order.job_id) ?? "Job" : "No job"}
+                      </button>
+                    ))}
+
+                    {orders.length > 3 ? (
+                      <button className="text-[10px] font-black text-blue-700" onClick={onOpenWorkOrders}>+{orders.length - 3} more</button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function EquipmentCard({ item, onMaintenance }: { item: Equipment; onMaintenance?: (equipmentId: string) => void }) {
   const style = equipmentTypeStyle(item.equipment_type, item.ownership_type);
 
@@ -1330,6 +1528,16 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
           Home screen for daily operations. Expand a job to see project files, construction calendar, and work order buttons.
         </p>
       </div>
+
+      <MyOperationsCalendar
+        currentPerson={currentPerson}
+        jobs={activeJobs}
+        workOrders={workOrders}
+        onOpenWorkOrders={() => {
+          const firstAssignedOrder = workOrders.find((order) => currentPerson && order.assigned_personnel_id === currentPerson.id && isOpenWorkOrder(order));
+          setSelectedWorkOrderId(firstAssignedOrder?.id ?? null);
+        }}
+      />
 
       <div className="grid gap-4">
         {boardRows.map(({ job, assignedEquipment, assignedPersonnel, openWorkOrders, importantOpenOrders, sortedPhases, assignedToMe }) => {
