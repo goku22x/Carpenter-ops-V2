@@ -456,6 +456,10 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [jobEditForm, setJobEditForm] = useState<JobEditForm | null>(null);
   const [savingJob, setSavingJob] = useState(false);
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
+  const [workOrderUpdateNote, setWorkOrderUpdateNote] = useState("");
+  const [workOrderSendBackNote, setWorkOrderSendBackNote] = useState("");
+  const [workOrderActionSaving, setWorkOrderActionSaving] = useState(false);
 
   const activeJobs = jobs.filter((job) => job.active !== false);
   const assignedJobIds = new Set<string>();
@@ -694,6 +698,152 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     };
   }
 
+
+  function appendWorkOrderUpdate(existingDescription: string | null | undefined, label: string, note: string) {
+    const cleanNote = note.trim();
+    if (!cleanNote) return existingDescription ?? "";
+
+    const timestamp = new Date().toLocaleString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    });
+
+    const base = (existingDescription ?? "").trim();
+    const divider = base ? "\n\n" : "";
+
+    return `${base}${divider}[${label} - ${timestamp}]\n${cleanNote}`;
+  }
+
+  function routeDepartment(workType: string) {
+    switch (workType) {
+      case "Survey": return "Survey";
+      case "Maintenance": return "Maintenance";
+      case "Mobilization": return "Mobilization";
+      case "Trucking": return "Trucks";
+      case "Foreman Assignment": return "Earthwork";
+      case "Office": return "Office";
+      default: return "Other";
+    }
+  }
+
+  function assignablePeopleForWorkType(workType: string) {
+    const department = routeDepartment(workType);
+
+    return personnel.filter((person) => {
+      if (person.active === false) return false;
+      if (department === "Other") return true;
+      return person.department === department || person.position === department;
+    });
+  }
+
+  async function patchWorkOrder(workOrderId: string, updates: Record<string, unknown>, successMessage: string) {
+    const order = workOrders.find((item) => item.id === workOrderId);
+    if (!order) return alert("Work order not found.");
+
+    setWorkOrderActionSaving(true);
+
+    try {
+      const payload = {
+        job_id: order.job_id || null,
+        work_type: order.work_type,
+        title: order.title,
+        description: order.description || null,
+        priority: order.priority,
+        status: order.status,
+        assigned_personnel_id: order.assigned_personnel_id || null,
+        related_equipment_id: order.related_equipment_id || null,
+        due_date: order.due_date || null,
+        custom_fields: order.custom_fields ?? {},
+        ...updates
+      };
+
+      const res = await fetch(`/api/work-orders/${workOrderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? data?.message ?? "Work order update failed.");
+
+      await onWorkOrdersChanged?.();
+      alert(successMessage);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Work order update failed.");
+    } finally {
+      setWorkOrderActionSaving(false);
+    }
+  }
+
+  async function addWorkOrderUpdate(workOrderId: string) {
+    const order = workOrders.find((item) => item.id === workOrderId);
+    if (!order) return alert("Work order not found.");
+    if (!workOrderUpdateNote.trim()) return alert("Type an update first.");
+
+    const nextDescription = appendWorkOrderUpdate(order.description, "Update", workOrderUpdateNote);
+    setWorkOrderUpdateNote("");
+
+    await patchWorkOrder(workOrderId, {
+      description: nextDescription,
+      status: order.status === "New" ? "In Progress" : order.status
+    }, "Work order updated.");
+  }
+
+  async function completeWorkOrder(workOrderId: string) {
+    const order = workOrders.find((item) => item.id === workOrderId);
+    if (!order) return alert("Work order not found.");
+
+    const nextDescription = appendWorkOrderUpdate(order.description, "Completed", workOrderUpdateNote.trim() || "Marked complete.");
+    setWorkOrderUpdateNote("");
+
+    await patchWorkOrder(workOrderId, {
+      description: nextDescription,
+      status: "Complete"
+    }, "Work order marked complete.");
+  }
+
+  async function reopenWorkOrder(workOrderId: string) {
+    const order = workOrders.find((item) => item.id === workOrderId);
+    if (!order) return alert("Work order not found.");
+
+    const nextDescription = appendWorkOrderUpdate(order.description, "Reopened", workOrderUpdateNote.trim() || "Work order reopened.");
+    setWorkOrderUpdateNote("");
+
+    await patchWorkOrder(workOrderId, {
+      description: nextDescription,
+      status: "In Progress"
+    }, "Work order reopened.");
+  }
+
+  async function sendBackWorkOrder(workOrderId: string) {
+    const order = workOrders.find((item) => item.id === workOrderId);
+    if (!order) return alert("Work order not found.");
+    if (!workOrderSendBackNote.trim()) return alert("Type why this is being sent back.");
+
+    const nextDescription = appendWorkOrderUpdate(order.description, "Sent Back", workOrderSendBackNote);
+    setWorkOrderSendBackNote("");
+
+    await patchWorkOrder(workOrderId, {
+      description: nextDescription,
+      status: "Waiting",
+      assigned_personnel_id: null
+    }, "Work order sent back.");
+  }
+
+  async function assignWorkOrder(workOrderId: string, personnelId: string) {
+    await patchWorkOrder(workOrderId, {
+      assigned_personnel_id: personnelId || null,
+      status: personnelId ? "Assigned" : "New"
+    }, personnelId ? "Work order assigned." : "Work order unassigned.");
+  }
+
+  async function updateWorkOrderStatus(workOrderId: string, status: string) {
+    await patchWorkOrder(workOrderId, { status }, "Work order status updated.");
+  }
+
   function startJobEdit(job: Job) {
     if (!isAdmin) return;
     setEditingJobId(job.id);
@@ -828,6 +978,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       }
 
       closeRequestForm();
+      if (data?.id) {
+        setSelectedWorkOrderId(data.id);
+      }
       await onWorkOrdersChanged?.();
       alert(`${type} work order created.`);
     } catch (err) {
@@ -1394,17 +1547,117 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                         <p className="mt-2 text-sm text-slate-500">No open work orders for this job.</p>
                       ) : (
                         <div className="mt-2 space-y-2">
-                          {openWorkOrders.slice(0, 6).map((order) => (
-                            <div key={order.id} className="rounded-xl bg-slate-50 p-2 text-sm">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getWorkOrderTypeColor(order.work_type)}`}>{order.work_type}</span>
-                                <span className="text-[10px] font-black uppercase">{order.status}</span>
+                          {openWorkOrders.slice(0, 8).map((order) => {
+                            const selected = selectedWorkOrderId === order.id;
+                            const assignablePeople = assignablePeopleForWorkType(order.work_type);
+                            const isComplete = ["Complete", "Closed"].includes(order.status);
+
+                            return (
+                              <div key={order.id} className={`rounded-xl border p-2 text-sm ${selected ? "border-blue-500 bg-blue-50" : "bg-slate-50"}`}>
+                                <button
+                                  className="w-full text-left"
+                                  onClick={() => {
+                                    setSelectedWorkOrderId(selected ? null : order.id);
+                                    setWorkOrderUpdateNote("");
+                                    setWorkOrderSendBackNote("");
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getWorkOrderTypeColor(order.work_type)}`}>
+                                      {order.work_type}
+                                    </span>
+                                    <span className="text-[10px] font-black uppercase">{order.status}</span>
+                                  </div>
+                                  <div className="mt-1 font-black">{order.title}</div>
+                                  <div className="text-xs text-slate-500 line-clamp-2">{order.description || "No description"}</div>
+                                </button>
+
+                                {selected ? (
+                                  <div className="mt-3 space-y-3 rounded-xl border bg-white p-3">
+                                    {isAdmin ? (
+                                      <div className="grid gap-3 sm:grid-cols-2">
+                                        <div>
+                                          <label className="label mt-0">Status</label>
+                                          <select
+                                            className="input bg-white"
+                                            value={order.status}
+                                            disabled={workOrderActionSaving}
+                                            onChange={(event) => updateWorkOrderStatus(order.id, event.target.value)}
+                                          >
+                                            <option value="New">New</option>
+                                            <option value="Assigned">Assigned</option>
+                                            <option value="In Progress">In Progress</option>
+                                            <option value="Waiting">Waiting</option>
+                                            <option value="Complete">Complete</option>
+                                            <option value="Closed">Closed</option>
+                                          </select>
+                                        </div>
+
+                                        <div>
+                                          <label className="label mt-0">Assign To ({routeDepartment(order.work_type)})</label>
+                                          <select
+                                            className="input bg-white"
+                                            value={order.assigned_personnel_id ?? ""}
+                                            disabled={workOrderActionSaving}
+                                            onChange={(event) => assignWorkOrder(order.id, event.target.value)}
+                                          >
+                                            <option value="">Unassigned</option>
+                                            {assignablePeople.map((person) => (
+                                              <option key={person.id} value={person.id}>
+                                                {person.full_name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    <label className="label">Update / Completion Note</label>
+                                    <textarea
+                                      className="input min-h-20 bg-white"
+                                      placeholder="Type progress update, completion note, or what was done..."
+                                      value={workOrderUpdateNote}
+                                      onChange={(event) => setWorkOrderUpdateNote(event.target.value)}
+                                    />
+
+                                    <div className="flex flex-wrap gap-2">
+                                      <button className="btn-secondary" disabled={workOrderActionSaving} onClick={() => addWorkOrderUpdate(order.id)}>
+                                        Add Update
+                                      </button>
+
+                                      {isComplete ? (
+                                        <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => reopenWorkOrder(order.id)}>
+                                          Reopen
+                                        </button>
+                                      ) : (
+                                        <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => completeWorkOrder(order.id)}>
+                                          Mark Complete
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {!isComplete ? (
+                                      <div className="rounded-xl border border-yellow-300 bg-yellow-50 p-3">
+                                        <h5 className="font-black text-yellow-900">Send Back</h5>
+                                        <label className="label">Reason</label>
+                                        <textarea
+                                          className="input min-h-16 bg-white"
+                                          placeholder="Missing info, wrong equipment, need plan sheet, etc."
+                                          value={workOrderSendBackNote}
+                                          onChange={(event) => setWorkOrderSendBackNote(event.target.value)}
+                                        />
+                                        <button className="btn-secondary mt-2" disabled={workOrderActionSaving} onClick={() => sendBackWorkOrder(order.id)}>
+                                          Send Back
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                               </div>
-                              <div className="mt-1 font-black">{order.title}</div>
-                              <div className="text-xs text-slate-500">{order.description || "No description"}</div>
-                            </div>
-                          ))}
-                          {openWorkOrders.length > 6 ? <div className="text-xs font-black text-slate-500">+{openWorkOrders.length - 6} more open work orders</div> : null}
+                            );
+                          })}
+
+                          {openWorkOrders.length > 8 ? <div className="text-xs font-black text-slate-500">+{openWorkOrders.length - 8} more open work orders</div> : null}
                         </div>
                       )}
                     </div>
