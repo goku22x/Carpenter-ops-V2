@@ -14,6 +14,7 @@ type Props = {
   workOrders?: WorkOrder[];
   profile?: Profile;
   onWorkOrdersChanged?: () => Promise<void> | void;
+  onJobsChanged?: () => Promise<void> | void;
 };
 
 type PersonnelWithJob = Personnel & {
@@ -23,8 +24,80 @@ type PersonnelWithJob = Personnel & {
 
 type PhaseLike = NonNullable<Job["job_phases"]>[number];
 
+
 const QUICK_REQUESTS = ["Survey", "Maintenance", "Mobilization", "Trucking", "Foreman Assignment", "Office"] as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+type PhaseForm = {
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  progress_percent: number | null;
+  sort_order: number;
+};
+
+type JobEditForm = {
+  name: string;
+  address: string;
+  owner: string;
+  site_contact: string;
+  dropbox_url: string;
+  notes: string;
+  phases: PhaseForm[];
+};
+
+function phasesFromJob(job: Job): PhaseForm[] {
+  const phases = [...(job.job_phases ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+  if (phases.length === 0) {
+    return [
+      "Earthwork",
+      "Storm Drain",
+      "Sewer",
+      "Water",
+      "Custom 1",
+      "Custom 2"
+    ].map((name, index) => ({
+      name,
+      start_date: null,
+      end_date: null,
+      progress_percent: 0,
+      sort_order: index
+    }));
+  }
+
+  return phases.map((phase, index) => ({
+    name: phase.name || phase.phase || `Phase ${index + 1}`,
+    start_date: phase.start_date,
+    end_date: phase.end_date,
+    progress_percent: phase.progress_percent ?? 0,
+    sort_order: phase.sort_order ?? index
+  }));
+}
+
+function jobEditFormFromJob(job: Job): JobEditForm {
+  return {
+    name: job.name ?? "",
+    address: job.address ?? "",
+    owner: job.owner ?? "",
+    site_contact: job.site_contact ?? "",
+    dropbox_url: job.dropbox_url ?? "",
+    notes: job.notes ?? "",
+    phases: phasesFromJob(job)
+  };
+}
+
+function normalizeSaveUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
+}
+
 
 function imagePath(value: string | null | undefined) {
   if (!value) return "";
@@ -245,7 +318,7 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
     .filter((item): item is { phase: PhaseLike; index: number; start: Date; end: Date } => Boolean(item.start && item.end));
 
   if (datedPhases.length === 0) {
-    return <EmptyBox text="Add phase dates to show calendar." />;
+    return <EmptyBox text="Add phase start/end dates to show the construction calendar." />;
   }
 
   const days = buildMonthDays(visibleMonth);
@@ -273,23 +346,27 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
 
   return (
     <div className="rounded-2xl border bg-white p-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h4 className="text-sm font-black">Mini Schedule</h4>
-          <div className="text-xs font-black text-slate-500">{monthTitle(visibleMonth)}</div>
+          <h4 className="font-black">Construction Calendar</h4>
+          <p className="text-xs font-bold text-slate-500">
+            Colored phase chips show what is planned on each calendar day.
+          </p>
         </div>
 
-        <div className="flex gap-1">
-          <button className="rounded-lg border bg-white px-2 py-1 text-xs font-black" onClick={previousMonth}>‹</button>
-          <button className="rounded-lg border bg-white px-2 py-1 text-xs font-black" onClick={resetMonth}>•</button>
-          <button className="rounded-lg border bg-white px-2 py-1 text-xs font-black" onClick={nextMonth}>›</button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={previousMonth}>Prev</button>
+          <button className="btn-secondary" onClick={resetMonth}>Project</button>
+          <button className="btn-secondary" onClick={nextMonth}>Next</button>
         </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-7 overflow-hidden rounded-xl border">
+      <div className="mt-3 text-center text-lg font-black">{monthTitle(visibleMonth)}</div>
+
+      <div className="mt-3 grid grid-cols-7 overflow-hidden rounded-2xl border">
         {WEEKDAYS.map((weekday) => (
-          <div key={weekday} className="border-b bg-slate-100 p-1 text-center text-[9px] font-black uppercase text-slate-500">
-            {weekday.slice(0, 1)}
+          <div key={weekday} className="border-b bg-slate-100 p-2 text-center text-xs font-black uppercase text-slate-600">
+            {weekday}
           </div>
         ))}
 
@@ -301,23 +378,40 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
           return (
             <div
               key={dateKey(day)}
-              className={`min-h-12 border-b border-r p-1 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-300"} ${isToday ? "ring-2 ring-red-500 ring-inset" : ""}`}
+              className={`min-h-28 border-b border-r p-2 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-400"} ${isToday ? "ring-2 ring-red-500 ring-inset" : ""}`}
             >
-              <div className={`mb-0.5 text-[9px] font-black ${isToday ? "text-red-700" : ""}`}>
-                {day.getDate()}
+              <div className="mb-1 flex items-center justify-between">
+                <span className={`text-xs font-black ${isToday ? "rounded-full bg-red-600 px-2 py-1 text-white" : ""}`}>
+                  {day.getDate()}
+                </span>
+
+                {activePhases.length > 0 ? (
+                  <span className="text-[10px] font-black text-slate-400">
+                    {activePhases.length}
+                  </span>
+                ) : null}
               </div>
 
-              <div className="space-y-0.5">
-                {activePhases.slice(0, 2).map(({ phase, index }) => (
-                  <div
-                    key={`${dateKey(day)}-${phase.id ?? index}`}
-                    className={`h-2 rounded-sm ${phaseColorClass(index)}`}
-                    title={`${phase.name || phase.phase} • ${formatDate(phase.start_date)} - ${formatDate(phase.end_date)}`}
-                  />
-                ))}
+              <div className="space-y-1">
+                {activePhases.slice(0, 4).map(({ phase, index }) => {
+                  const percent = Math.max(0, Math.min(100, phase.progress_percent ?? 0));
+                  const label = phaseInitials(phase.name || phase.phase);
 
-                {activePhases.length > 2 ? (
-                  <div className="text-[8px] font-black text-slate-500">+{activePhases.length - 2}</div>
+                  return (
+                    <div
+                      key={`${dateKey(day)}-${phase.id ?? index}`}
+                      className={`truncate rounded-md px-1.5 py-1 text-[10px] font-black text-black ${phaseColorClass(index)}`}
+                      title={`${phase.name || phase.phase} • ${formatDate(phase.start_date)} - ${formatDate(phase.end_date)} • ${percent}%`}
+                    >
+                      {label} {percent}%
+                    </div>
+                  );
+                })}
+
+                {activePhases.length > 4 ? (
+                  <div className="text-[10px] font-black text-slate-500">
+                    +{activePhases.length - 4} more
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -325,11 +419,11 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
         })}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-1">
-        {sorted.slice(0, 6).map((phase, index) => (
-          <div key={phase.id ?? `${phase.name}-${index}`} className="flex items-center gap-1 text-[9px] font-black">
-            <span className={`h-2 w-2 rounded-full ${phaseColorClass(index)}`} />
-            <span>{phaseInitials(phase.name || phase.phase)}</span>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sorted.map((phase, index) => (
+          <div key={phase.id ?? `${phase.name}-${index}`} className="flex items-center gap-1 rounded-full border bg-white px-2 py-1 text-[10px] font-black">
+            <span className={`h-3 w-3 rounded-full ${phaseColorClass(index)}`} />
+            <span>{phaseInitials(phase.name || phase.phase)} = {phase.name || phase.phase}</span>
           </div>
         ))}
       </div>
@@ -337,7 +431,7 @@ function PhaseMonthCalendar({ phases }: { phases: PhaseLike[] }) {
   );
 }
 
-export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [], profile, onWorkOrdersChanged }: Props) {
+export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [], profile, onWorkOrdersChanged, onJobsChanged }: Props) {
   const personnelWithJob = personnel as PersonnelWithJob[];
   const currentPerson = getCurrentPerson(profile, personnelWithJob);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
@@ -345,6 +439,10 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [quickRequestType, setQuickRequestType] = useState<string>("Survey");
   const [quickRequestNote, setQuickRequestNote] = useState("");
   const [quickSaving, setQuickSaving] = useState(false);
+  const isAdmin = profile?.role === "admin";
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [jobEditForm, setJobEditForm] = useState<JobEditForm | null>(null);
+  const [savingJob, setSavingJob] = useState(false);
 
   const activeJobs = jobs.filter((job) => job.active !== false);
   const assignedJobIds = new Set<string>();
@@ -391,6 +489,108 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       })
       .sort((a, b) => b.sortScore - a.sortScore || a.job.name.localeCompare(b.job.name));
   }, [activeJobs, equipment, personnelWithJob, workOrders, assignedJobIds]);
+
+
+  function startJobEdit(job: Job) {
+    if (!isAdmin) return;
+    setEditingJobId(job.id);
+    setJobEditForm(jobEditFormFromJob(job));
+  }
+
+  function cancelJobEdit() {
+    setEditingJobId(null);
+    setJobEditForm(null);
+  }
+
+  function updateJobPhase(index: number, updates: Partial<PhaseForm>) {
+    if (!jobEditForm) return;
+
+    setJobEditForm({
+      ...jobEditForm,
+      phases: jobEditForm.phases.map((phase, phaseIndex) =>
+        phaseIndex === index ? { ...phase, ...updates } : phase
+      )
+    });
+  }
+
+  function addJobPhase() {
+    if (!jobEditForm) return;
+
+    setJobEditForm({
+      ...jobEditForm,
+      phases: [
+        ...jobEditForm.phases,
+        {
+          name: `Custom ${jobEditForm.phases.length + 1}`,
+          start_date: null,
+          end_date: null,
+          progress_percent: 0,
+          sort_order: jobEditForm.phases.length
+        }
+      ]
+    });
+  }
+
+  function deleteJobPhase(index: number) {
+    if (!jobEditForm) return;
+
+    if (jobEditForm.phases.length <= 1) {
+      alert("A job needs at least one phase.");
+      return;
+    }
+
+    setJobEditForm({
+      ...jobEditForm,
+      phases: jobEditForm.phases
+        .filter((_, phaseIndex) => phaseIndex !== index)
+        .map((phase, phaseIndex) => ({ ...phase, sort_order: phaseIndex }))
+    });
+  }
+
+  async function saveJobFromOperations(jobId: string) {
+    if (!isAdmin) return alert("Admin only.");
+    if (!jobEditForm) return;
+    if (!jobEditForm.name.trim()) return alert("Job name is required.");
+
+    const cleanPhases = jobEditForm.phases
+      .map((phase, index) => ({
+        ...phase,
+        name: phase.name.trim(),
+        progress_percent: Math.max(0, Math.min(100, Number(phase.progress_percent) || 0)),
+        sort_order: index
+      }))
+      .filter((phase) => phase.name.length > 0);
+
+    if (cleanPhases.length === 0) {
+      return alert("At least one phase is required.");
+    }
+
+    setSavingJob(true);
+
+    try {
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...jobEditForm,
+          dropbox_url: normalizeSaveUrl(jobEditForm.dropbox_url) || null,
+          phases: cleanPhases
+        })
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Save failed.");
+
+      await onJobsChanged?.();
+      setEditingJobId(null);
+      setJobEditForm(null);
+      alert("Job info saved.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setSavingJob(false);
+    }
+  }
 
   async function createQuickRequest(jobId: string, type: string) {
     const description = quickRequestNote.trim() || getDefaultRequestDescription(type);
@@ -506,19 +706,153 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3 xl:grid-cols-[minmax(0,2.3fr)_minmax(260px,0.7fr)]">
+                  <div className="grid gap-3 xl:grid-cols-[1.1fr_1.7fr]">
                     <div className="rounded-2xl border bg-slate-50 p-3">
-                      <h4 className="font-black">Job Info</h4>
-                      <div className="mt-2 space-y-1 text-sm">
-                        <div><span className="font-black">Address:</span> {job.address || "—"}</div>
-                        <div><span className="font-black">Owner:</span> {job.owner || "—"}</div>
-                        <div><span className="font-black">Site Contact:</span> {job.site_contact || "—"}</div>
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="font-black">Job Info</h4>
+                        {isAdmin && editingJobId !== job.id ? (
+                          <button className="btn-secondary" onClick={() => startJobEdit(job)}>
+                            Edit Job Info
+                          </button>
+                        ) : null}
                       </div>
 
-                      <div className="mt-4">
-                        <h4 className="font-black">Phase Details</h4>
-                        <PhaseList phases={sortedPhases} />
-                      </div>
+                      {isAdmin && editingJobId === job.id && jobEditForm ? (
+                        <div className="mt-3 space-y-3">
+                          <label className="label">Job Name</label>
+                          <input
+                            className="input bg-white"
+                            value={jobEditForm.name}
+                            onChange={(event) => setJobEditForm({ ...jobEditForm, name: event.target.value })}
+                          />
+
+                          <label className="label">Address</label>
+                          <input
+                            className="input bg-white"
+                            value={jobEditForm.address}
+                            onChange={(event) => setJobEditForm({ ...jobEditForm, address: event.target.value })}
+                          />
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="label">Owner</label>
+                              <input
+                                className="input bg-white"
+                                value={jobEditForm.owner}
+                                onChange={(event) => setJobEditForm({ ...jobEditForm, owner: event.target.value })}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="label">Site Contact</label>
+                              <input
+                                className="input bg-white"
+                                value={jobEditForm.site_contact}
+                                onChange={(event) => setJobEditForm({ ...jobEditForm, site_contact: event.target.value })}
+                              />
+                            </div>
+                          </div>
+
+                          <label className="label">Project Files Link</label>
+                          <input
+                            className="input bg-white"
+                            placeholder="Paste Dropbox/project folder URL"
+                            value={jobEditForm.dropbox_url}
+                            onChange={(event) => setJobEditForm({ ...jobEditForm, dropbox_url: event.target.value })}
+                          />
+
+                          <label className="label">Notes</label>
+                          <textarea
+                            className="input min-h-24 bg-white"
+                            value={jobEditForm.notes}
+                            onChange={(event) => setJobEditForm({ ...jobEditForm, notes: event.target.value })}
+                          />
+
+                          <div className="rounded-2xl border bg-white p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <h4 className="font-black">Phases</h4>
+                              <button className="btn-secondary" onClick={addJobPhase}>+ Add Phase</button>
+                            </div>
+
+                            <div className="mt-3 space-y-3">
+                              {jobEditForm.phases.map((phase, index) => (
+                                <div key={index} className="rounded-xl border bg-slate-50 p-3">
+                                  <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr_1fr_90px_auto]">
+                                    <div>
+                                      <label className="label mt-0">Phase</label>
+                                      <input
+                                        className="input bg-white"
+                                        value={phase.name}
+                                        onChange={(event) => updateJobPhase(index, { name: event.target.value })}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="label mt-0">Start</label>
+                                      <input
+                                        className="input bg-white"
+                                        type="date"
+                                        value={phase.start_date ?? ""}
+                                        onChange={(event) => updateJobPhase(index, { start_date: event.target.value || null })}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="label mt-0">End</label>
+                                      <input
+                                        className="input bg-white"
+                                        type="date"
+                                        value={phase.end_date ?? ""}
+                                        onChange={(event) => updateJobPhase(index, { end_date: event.target.value || null })}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="label mt-0">%</label>
+                                      <input
+                                        className="input bg-white"
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        value={phase.progress_percent ?? 0}
+                                        onChange={(event) => updateJobPhase(index, { progress_percent: Math.max(0, Math.min(100, Number(event.target.value) || 0)) })}
+                                      />
+                                    </div>
+
+                                    <div className="flex items-end">
+                                      <button className="btn-danger w-full" onClick={() => deleteJobPhase(index)}>
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <button className="btn-primary" disabled={savingJob} onClick={() => saveJobFromOperations(job.id)}>
+                              {savingJob ? "Saving..." : "Save Job Info"}
+                            </button>
+                            <button className="btn-secondary" disabled={savingJob} onClick={cancelJobEdit}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mt-2 space-y-1 text-sm">
+                            <div><span className="font-black">Address:</span> {job.address || "—"}</div>
+                            <div><span className="font-black">Owner:</span> {job.owner || "—"}</div>
+                            <div><span className="font-black">Site Contact:</span> {job.site_contact || "—"}</div>
+                          </div>
+
+                          <div className="mt-4">
+                            <h4 className="font-black">Phase Details</h4>
+                            <PhaseList phases={sortedPhases} />
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <PhaseMonthCalendar phases={sortedPhases} />
