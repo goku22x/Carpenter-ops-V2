@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 
-const VALID_ROLES = ["admin", "dispatcher", "maintenance", "survey", "foreman", "field", "manager", "viewer"] as const;
+const VALID_ROLES = ["admin", "dispatcher", "foreman", "field", "maintenance", "survey", "payroll", "viewer", "manager"] as const;
 const VALID_STATUSES = ["pending", "active", "disabled"] as const;
 
 const profileUpdateSchema = z.object({
