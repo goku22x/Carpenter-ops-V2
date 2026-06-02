@@ -739,6 +739,22 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     });
   }
 
+  function departmentHeadForWorkType(workType: string) {
+    const people = assignablePeopleForWorkType(workType);
+
+    const headKeywords = ["head", "lead", "manager", "superintendent", "foreman", "admin", "director"];
+
+    return (
+      people.find((person) =>
+        headKeywords.some((keyword) =>
+          `${person.position ?? ""} ${person.notes ?? ""}`.toLowerCase().includes(keyword)
+        )
+      ) ??
+      people[0] ??
+      null
+    );
+  }
+
   async function patchWorkOrder(workOrderId: string, updates: Record<string, unknown>, successMessage: string) {
     const order = workOrders.find((item) => item.id === workOrderId);
     if (!order) return alert("Work order not found.");
@@ -951,16 +967,19 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     try {
       const rawPayload = buildRequestPayload(jobId, type);
 
+      const departmentHead = departmentHeadForWorkType(type);
+      const assignedPersonnelId = departmentHead?.id ?? "";
+
       const payload = {
         job_id: rawPayload.job_id || null,
         work_type: rawPayload.work_type,
         title: rawPayload.title || getRequestTitle(type),
         description: rawPayload.description || getDefaultRequestDescription(type),
         priority: rawPayload.priority || "Medium",
-        status: "New",
+        status: assignedPersonnelId ? "Assigned" : "New",
         due_date: rawPayload.due_date || null,
         custom_fields: rawPayload.custom_fields ?? {},
-        ...(rawPayload.assigned_personnel_id ? { assigned_personnel_id: rawPayload.assigned_personnel_id } : {}),
+        ...(assignedPersonnelId ? { assigned_personnel_id: assignedPersonnelId } : {}),
         ...(rawPayload.related_equipment_id ? { related_equipment_id: rawPayload.related_equipment_id } : {})
       };
 
@@ -1024,7 +1043,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     if (workOrderType === "Survey") {
       return (
         <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div>
               <label className="label">Survey Type *</label>
               <select
@@ -1063,7 +1082,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
 
       return (
         <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div>
               <label className="label">Equipment *</label>
               {maintenanceEquipmentId && selectedEquipment ? (
@@ -1126,7 +1145,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     if (workOrderType === "Mobilization") {
       return (
         <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-5">
             <div>
               <label className="label">Equipment Type *</label>
               <select
@@ -1171,7 +1190,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     if (workOrderType === "Trucking") {
       return (
         <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-6">
             <div>
               <label className="label"># Trucks *</label>
               <input
@@ -1203,6 +1222,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             </div>
 
             {dueDateField}
+            {priorityField}
           </div>
 
           <div>
@@ -1221,7 +1241,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     if (workOrderType === "Foreman Assignment") {
       return (
         <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div>
               <label className="label">Requested Foreman</label>
               <input
@@ -1251,7 +1271,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     if (workOrderType === "Office") {
       return (
         <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             {dueDateField}
             {priorityField}
           </div>
@@ -1337,8 +1357,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                           <h4 className="font-black">Create {workOrderType} Request</h4>
                           <p className="text-xs font-bold text-slate-600">
                             {workOrderType === "Maintenance"
-                              ? "Maintenance is opened from the selected equipment card and preloads this job/machine."
-                              : "This opens the correct form for the selected department and preloads this job."}
+                              ? "Maintenance is opened from the selected equipment card and auto-assigns to the maintenance head/lead."
+                              : "Work order will auto-assign to the department head/lead when submitted."}
                           </p>
                         </div>
                         <button className="btn-secondary" disabled={quickSaving} onClick={closeRequestForm}>
