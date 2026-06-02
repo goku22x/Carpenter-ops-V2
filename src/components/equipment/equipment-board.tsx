@@ -775,7 +775,20 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     setQuickSaving(true);
 
     try {
-      const payload = buildRequestPayload(jobId, type);
+      const rawPayload = buildRequestPayload(jobId, type);
+
+      const payload = {
+        job_id: rawPayload.job_id || null,
+        work_type: rawPayload.work_type,
+        title: rawPayload.title || getRequestTitle(type),
+        description: rawPayload.description || getDefaultRequestDescription(type),
+        priority: rawPayload.priority || "Medium",
+        status: "New",
+        due_date: rawPayload.due_date || null,
+        custom_fields: rawPayload.custom_fields ?? {},
+        ...(rawPayload.assigned_personnel_id ? { assigned_personnel_id: rawPayload.assigned_personnel_id } : {}),
+        ...(rawPayload.related_equipment_id ? { related_equipment_id: rawPayload.related_equipment_id } : {})
+      };
 
       const res = await fetch("/api/work-orders", {
         method: "POST",
@@ -784,7 +797,11 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       });
 
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error ?? "Could not create request.");
+
+      if (!res.ok) {
+        console.error("Operations Board work order create failed", data);
+        throw new Error(data?.error ?? data?.message ?? "Could not create request.");
+      }
 
       closeRequestForm();
       await onWorkOrdersChanged?.();
