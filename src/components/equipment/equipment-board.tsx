@@ -25,7 +25,7 @@ type PersonnelWithJob = Personnel & {
 type PhaseLike = NonNullable<Job["job_phases"]>[number];
 
 
-const QUICK_REQUESTS = ["Survey", "Maintenance", "Mobilization", "Trucking", "Foreman Assignment", "Office"] as const;
+const QUICK_REQUESTS = ["Survey", "Mobilization", "Trucking", "Foreman Assignment", "Office"] as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type PhaseForm = {
@@ -214,7 +214,7 @@ function getDefaultCalendarMonth(phases: PhaseLike[]) {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
-function EquipmentCard({ item }: { item: Equipment }) {
+function EquipmentCard({ item, onMaintenance }: { item: Equipment; onMaintenance?: (equipmentId: string) => void }) {
   const style = equipmentTypeStyle(item.equipment_type, item.ownership_type);
 
   return (
@@ -244,6 +244,18 @@ function EquipmentCard({ item }: { item: Equipment }) {
 
         {item.ownership_type === "Rental" && item.rental_company ? (
           <div className="text-xs font-bold text-pink-800">{item.rental_company}</div>
+        ) : null}
+
+        {onMaintenance ? (
+          <button
+            className="mt-2 rounded-lg border bg-white px-2 py-1 text-[10px] font-black uppercase text-slate-700 hover:border-red-400 hover:text-red-700"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMaintenance(item.id);
+            }}
+          >
+            + Maintenance
+          </button>
         ) : null}
       </div>
     </div>
@@ -439,6 +451,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [quickRequestType, setQuickRequestType] = useState<string>("Survey");
   const [quickRequestForm, setQuickRequestForm] = useState<Record<string, string>>({});
   const [quickSaving, setQuickSaving] = useState(false);
+  const [maintenanceEquipmentId, setMaintenanceEquipmentId] = useState<string | null>(null);
   const isAdmin = profile?.role === "admin";
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [jobEditForm, setJobEditForm] = useState<JobEditForm | null>(null);
@@ -496,6 +509,16 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     setQuickRequestJobId(jobId);
     setQuickRequestType(type);
     setQuickRequestForm({});
+    setMaintenanceEquipmentId(null);
+  }
+
+  function openMaintenanceRequestForm(jobId: string, equipmentId: string) {
+    setQuickRequestJobId(jobId);
+    setQuickRequestType("Maintenance");
+    setMaintenanceEquipmentId(equipmentId);
+    setQuickRequestForm({
+      related_equipment_id: equipmentId
+    });
   }
 
   function updateQuickRequestField(key: string, value: string) {
@@ -509,6 +532,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     setQuickRequestJobId(null);
     setQuickRequestType("Survey");
     setQuickRequestForm({});
+    setMaintenanceEquipmentId(null);
   }
 
   function getRequestTitle(type: string) {
@@ -882,30 +906,38 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     }
 
     if (quickRequestType === "Maintenance") {
+      const selectedEquipment = equipment.find((item) => item.id === quickRequestForm.related_equipment_id);
+
       return (
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
               <label className="label">Equipment *</label>
-              <select
-                className="input bg-white"
-                value={quickRequestForm.related_equipment_id ?? ""}
-                onChange={(event) => updateQuickRequestField("related_equipment_id", event.target.value)}
-              >
-                <option value="">Select equipment</option>
-                {jobEquipment.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} #{item.equipment_number ?? "—"}
-                  </option>
-                ))}
-                {equipment
-                  .filter((item) => item.current_job_id !== jobId)
-                  .map((item) => (
+              {maintenanceEquipmentId && selectedEquipment ? (
+                <div className="rounded-xl border bg-white p-3 text-sm font-black">
+                  {selectedEquipment.name} #{selectedEquipment.equipment_number ?? "—"}
+                </div>
+              ) : (
+                <select
+                  className="input bg-white"
+                  value={quickRequestForm.related_equipment_id ?? ""}
+                  onChange={(event) => updateQuickRequestField("related_equipment_id", event.target.value)}
+                >
+                  <option value="">Select equipment</option>
+                  {jobEquipment.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name} #{item.equipment_number ?? "—"} (Other)
+                      {item.name} #{item.equipment_number ?? "—"}
                     </option>
                   ))}
-              </select>
+                  {equipment
+                    .filter((item) => item.current_job_id !== jobId)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} #{item.equipment_number ?? "—"} (Other)
+                      </option>
+                    ))}
+                </select>
+              )}
             </div>
 
             <div>
@@ -1136,7 +1168,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                   <EmptyBox text="No equipment assigned to this job." />
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {assignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
+                    {assignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} onMaintenance={(equipmentId) => openMaintenanceRequestForm(job.id, equipmentId)} />)}
                   </div>
                 )}
               </div>
@@ -1162,7 +1194,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                         <div>
                           <h4 className="font-black">Create {quickRequestType} Request</h4>
                           <p className="text-xs font-bold text-slate-600">
-                            This opens the correct form for the selected department and preloads this job.
+                            {quickRequestType === "Maintenance"
+                              ? "Maintenance is opened from the selected equipment card and preloads this job/machine."
+                              : "This opens the correct form for the selected department and preloads this job."}
                           </p>
                         </div>
                         <button className="btn-secondary" disabled={quickSaving} onClick={closeRequestForm}>
