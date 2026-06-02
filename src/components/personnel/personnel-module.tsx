@@ -26,8 +26,8 @@ const emptyForm = {
   active: true
 };
 
-const DEPARTMENTS = ["Dispatch", "Survey", "Earthwork", "Utilities", "Maintenance", "Mobilization", "Trucks", "Office", "Management", "Other"];
-const USER_ROLES = ["admin", "dispatcher", "maintenance", "survey", "foreman", "field", "manager", "viewer"];
+const DEPARTMENTS = ["Operations", "Dispatch", "Survey", "Earthwork", "Utilities", "Maintenance", "Mobilization", "Trucks", "Payroll", "Office", "Management", "Other"];
+const USER_ROLES = ["admin", "dispatcher", "foreman", "field", "maintenance", "survey", "payroll"];
 const USER_STATUSES = ["pending", "active", "disabled"];
 
 function formFromPerson(person?: Personnel) {
