@@ -26,7 +26,7 @@ type PersonnelWithJob = Personnel & {
 type PhaseLike = NonNullable<Job["job_phases"]>[number];
 
 
-const QUICK_REQUESTS = ["Survey", "Mobilization", "Trucking", "Foreman Assignment", "Office"] as const;
+const QUICK_REQUESTS = ["Equipment Request", "Survey", "Maintenance", "Trucking", "Office"] as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type PhaseForm = {
@@ -129,6 +129,61 @@ function isOpenWorkOrder(order: WorkOrder) {
 
 function isImportantWorkOrder(order: WorkOrder) {
   return ["Critical", "High"].includes(order.priority) || ["New", "Waiting"].includes(order.status);
+}
+
+function cleanLower(value?: string | null) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function isDispatcherProfile(profile?: Profile) {
+  const role = cleanLower(profile?.role);
+  const department = cleanLower(profile?.department);
+  return ["admin", "manager", "dispatcher", "operations", "superintendent"].includes(role) || department.includes("dispatch") || department.includes("equipment") || department.includes("operations");
+}
+
+function isAdminProfile(profile?: Profile) {
+  return ["admin", "manager"].includes(cleanLower(profile?.role));
+}
+
+function isForemanProfile(profile?: Profile) {
+  const role = cleanLower(profile?.role);
+  const department = cleanLower(profile?.department);
+  return role.includes("foreman") || department.includes("foreman");
+}
+
+function isEquipmentRequestOrder(order: WorkOrder) {
+  return order.work_type === "Equipment Request" || order.work_type === "Mobilization";
+}
+
+function displayWorkType(workType: string) {
+  if (workType === "Mobilization") return "Equipment Request";
+  return workType;
+}
+
+function normalizeWorkOrderStatus(status: string) {
+  if (["New", "Waiting"].includes(status)) return "Requested";
+  if (status === "Assigned") return "Assigned";
+  if (status === "Complete" || status === "Closed") return "Completed";
+  return "In Progress";
+}
+
+function canManageWorkType(profile: Profile | undefined, workType: string) {
+  if (isAdminProfile(profile)) return true;
+
+  const role = cleanLower(profile?.role);
+  const department = cleanLower(profile?.department);
+  const type = cleanLower(workType);
+
+  if (isEquipmentRequestOrder({ work_type: workType } as WorkOrder)) {
+    return isDispatcherProfile(profile);
+  }
+
+  if (type === "maintenance") return role.includes("maintenance") || department.includes("maintenance");
+  if (type === "survey") return role.includes("survey") || department.includes("survey");
+  if (type === "trucking") return role.includes("truck") || department.includes("truck");
+  if (type === "office") return role.includes("office") || department.includes("office") || department.includes("admin");
+
+  return false;
 }
 
 function getCurrentPerson(profile: Profile | undefined, personnel: PersonnelWithJob[]) {
@@ -484,7 +539,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [workOrderForm, setWorkOrderForm] = useState<Record<string, string>>({});
   const [quickSaving, setQuickSaving] = useState(false);
   const [maintenanceEquipmentId, setMaintenanceEquipmentId] = useState<string | null>(null);
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = isAdminProfile(profile);
+  const canDispatchEquipment = isDispatcherProfile(profile);
+  const isForemanView = isForemanProfile(profile) && !canDispatchEquipment && !isAdmin;
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [jobEditForm, setJobEditForm] = useState<JobEditForm | null>(null);
   const [savingJob, setSavingJob] = useState(false);
@@ -511,8 +568,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     }
   }
 
-  const unassignedEquipment = equipment.filter((item) => !item.current_job_id);
-  const unassignedOpenOrders = workOrders.filter((order) => !order.job_id && isOpenWorkOrder(order));
+  const unassignedEquipment = canDispatchEquipment ? equipment.filter((item) => !item.current_job_id) : [];
+  const unassignedOpenOrders = canDispatchEquipment ? workOrders.filter((order) => !order.job_id && isOpenWorkOrder(order)) : [];
 
   const boardRows = useMemo(() => {
     return activeJobs
@@ -580,8 +637,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
         return "Survey Work Order";
       case "Maintenance":
         return "Maintenance Work Order";
+      case "Equipment Request":
       case "Mobilization":
-        return "Mobilization Work Order";
+        return "Equipment Request";
       case "Trucking":
         return "Trucking Work Order";
       case "Foreman Assignment":
@@ -638,15 +696,15 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       };
     }
 
-    if (type === "Mobilization") {
+    if (type === "Equipment Request" || type === "Mobilization") {
       if (!fields.equipment_type_needed) {
-        throw new Error("Mobilization request needs equipment type.");
+        throw new Error("Equipment request needs equipment type.");
       }
 
       return {
         job_id: jobId,
-        work_type: type,
-        title: "Mobilization Work Order",
+        work_type: "Equipment Request",
+        title: "Equipment Request",
         description: fields.notes || `${fields.equipment_type_needed} needed`,
         priority: fields.priority || "Medium",
         status: "New",
@@ -655,7 +713,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
         due_date: fields.due_date || null,
         custom_fields: {
           equipment_type_needed: fields.equipment_type_needed,
-          quantity: fields.quantity || "1"
+          quantity: fields.quantity || "1",
+          request_kind: "equipment_type_request"
         }
       };
     }
@@ -756,7 +815,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     switch (workType) {
       case "Survey": return "Survey";
       case "Maintenance": return "Maintenance";
-      case "Mobilization": return "Mobilization";
+      case "Equipment Request":
+      case "Mobilization": return "Equipment";
       case "Trucking": return "Trucks";
       case "Foreman Assignment": return "Earthwork";
       case "Office": return "Office";
@@ -847,7 +907,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     const order = workOrders.find((item) => item.id === workOrderId);
     if (!order) return alert("Work order not found.");
 
-    if (order.work_type === "Mobilization") {
+    if (isEquipmentRequestOrder(order)) {
       const equipmentId = workOrderCompletionEquipmentId.trim();
       if (!equipmentId) return alert("Pick the specific equipment unit dispatch is assigning.");
 
@@ -1068,7 +1128,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
         setSelectedWorkOrderId(data.id);
       }
       await onWorkOrdersChanged?.();
-      alert(`${type} work order created.`);
+      alert(`${displayWorkType(type)} created.`);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Could not create request.");
     } finally {
@@ -1209,7 +1269,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       );
     }
 
-    if (workOrderType === "Mobilization") {
+    if (workOrderType === "Equipment Request" || workOrderType === "Mobilization") {
       return (
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-5">
@@ -1242,10 +1302,10 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
           </div>
 
           <div>
-            <label className="label">Move Notes</label>
+            <label className="label">Request Notes</label>
             <textarea
               className="input min-h-20 bg-white"
-              placeholder="Where from, where to, timing, access notes..."
+              placeholder="Example: need dozer tomorrow morning for finish grading, access through west gate..."
               value={workOrderForm.notes ?? ""}
               onChange={(event) => updateWorkOrderField("notes", event.target.value)}
             />
@@ -1374,7 +1434,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       <div className="card">
         <h2 className="text-2xl font-black">Operations Board</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Home screen for daily operations. Expand a job to see project files, construction calendar, and work order buttons.
+          Job-centered dispatch view. Expand a job to see personnel, assigned equipment, request categories, open work, and the job calendar.
         </p>
       </div>
 
@@ -1438,7 +1498,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <h4 className="font-black">Create {workOrderType} Request</h4>
+                          <h4 className="font-black">Create {displayWorkType(workOrderType)}</h4>
                           <p className="text-xs font-bold text-slate-600">
                             {workOrderType === "Maintenance"
                               ? "Maintenance is opened from the selected equipment card and auto-assigns to the maintenance head/lead."
@@ -1456,7 +1516,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button className="btn-primary" disabled={quickSaving} onClick={() => createWorkOrder(job.id, workOrderType)}>
-                          {quickSaving ? "Creating..." : `Submit ${workOrderType} Request`}
+                          {quickSaving ? "Creating..." : `Submit ${displayWorkType(workOrderType)}`}
                         </button>
                         <button className="btn-secondary" disabled={quickSaving} onClick={closeRequestForm}>
                           Cancel
@@ -1659,6 +1719,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                             const selected = selectedWorkOrderId === order.id;
                             const assignablePeople = assignablePeopleForWorkType(order.work_type);
                             const isComplete = ["Complete", "Closed"].includes(order.status);
+                            const canManageOrder = canManageWorkType(profile, order.work_type);
 
                             return (
                               <div key={order.id} className={`rounded-xl border p-2 text-sm ${selected ? "border-blue-500 bg-blue-50" : "bg-slate-50"}`}>
@@ -1673,9 +1734,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getWorkOrderTypeColor(order.work_type)}`}>
-                                      {order.work_type}
+                                      {displayWorkType(order.work_type)}
                                     </span>
-                                    <span className="text-[10px] font-black uppercase">{order.status}</span>
+                                    <span className="text-[10px] font-black uppercase">{normalizeWorkOrderStatus(order.status)}</span>
                                   </div>
                                   <div className="mt-1 font-black">{order.title}</div>
                                   <div className="text-xs text-slate-500 line-clamp-2">{order.description || "No description"}</div>
@@ -1683,7 +1744,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
 
                                 {selected ? (
                                   <div className="mt-3 space-y-3 rounded-xl border bg-white p-3">
-                                    {isAdmin ? (
+                                    {canManageOrder ? (
                                       <div className="grid gap-3 sm:grid-cols-2">
                                         <div>
                                           <label className="label mt-0">Status</label>
@@ -1693,12 +1754,10 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                             disabled={workOrderActionSaving}
                                             onChange={(event) => updateWorkOrderStatus(order.id, event.target.value)}
                                           >
-                                            <option value="New">New</option>
+                                            <option value="New">Requested</option>
                                             <option value="Assigned">Assigned</option>
                                             <option value="In Progress">In Progress</option>
-                                            <option value="Waiting">Waiting</option>
-                                            <option value="Complete">Complete</option>
-                                            <option value="Closed">Closed</option>
+                                            <option value="Complete">Completed</option>
                                           </select>
                                         </div>
 
@@ -1721,7 +1780,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                       </div>
                                     ) : null}
 
-                                    {order.work_type === "Mobilization" && !isComplete ? (() => {
+                                    {isEquipmentRequestOrder(order) && !isComplete && canDispatchEquipment ? (() => {
                                       const fields = (order.custom_fields ?? {}) as Record<string, unknown>;
                                       const requestedType = String(fields.equipment_type_needed ?? "");
                                       const availableUnits = equipment
@@ -1762,7 +1821,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                           )}
                                         </div>
                                       );
-                                    })() : (
+                                    })() : (!isEquipmentRequestOrder(order) || isComplete) ? (
                                       <>
                                         <label className="label">Update / Completion Note</label>
                                         <textarea
@@ -1772,27 +1831,40 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                           onChange={(event) => setWorkOrderUpdateNote(event.target.value)}
                                         />
                                       </>
-                                    )}
+                                    ) : null}
+
+                                    {isEquipmentRequestOrder(order) && !isComplete && !canDispatchEquipment ? (() => {
+                                      const fields = (order.custom_fields ?? {}) as Record<string, unknown>;
+                                      const requestedType = String(fields.equipment_type_needed ?? "Equipment");
+
+                                      return (
+                                        <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 text-sm font-bold text-purple-950">
+                                          Requested equipment type: <span className="font-black">{requestedType}</span>. Dispatch will select the exact unit.
+                                        </div>
+                                      );
+                                    })() : null}
 
                                     <div className="flex flex-wrap gap-2">
-                                      {!(order.work_type === "Mobilization" && !isComplete) ? (
+                                      {(!isEquipmentRequestOrder(order) || isComplete) && canManageOrder ? (
                                         <button className="btn-secondary" disabled={workOrderActionSaving} onClick={() => addWorkOrderUpdate(order.id)}>
                                           Add Update
                                         </button>
                                       ) : null}
 
-                                      {isComplete ? (
-                                        <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => reopenWorkOrder(order.id)}>
-                                          Reopen
-                                        </button>
-                                      ) : (
-                                        <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => completeWorkOrder(order.id)}>
-                                          {order.work_type === "Mobilization" ? "Assign Unit + Complete" : "Mark Complete"}
-                                        </button>
-                                      )}
+                                      {canManageOrder ? (
+                                        isComplete ? (
+                                          <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => reopenWorkOrder(order.id)}>
+                                            Reopen
+                                          </button>
+                                        ) : (
+                                          <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => completeWorkOrder(order.id)}>
+                                            {isEquipmentRequestOrder(order) ? "Assign Unit + Complete" : "Mark Complete"}
+                                          </button>
+                                        )
+                                      ) : null}
                                     </div>
 
-                                    {!isComplete ? (
+                                    {!isComplete && canManageOrder ? (
                                       <div className="rounded-xl border border-yellow-300 bg-yellow-50 p-3">
                                         <h5 className="font-black text-yellow-900">Send Back</h5>
                                         <label className="label">Reason</label>
@@ -1831,22 +1903,24 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
           );
         })}
 
-        <section className="rounded-3xl border-l-8 border-slate-400 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-3 border-b pb-3">
-            <div>
-              <h3 className="text-2xl font-black uppercase">Unassigned / Yard / Other</h3>
-              <p className="text-sm text-slate-500">{unassignedEquipment.length} equipment not assigned to a job • {unassignedOpenOrders.length} open work orders without a job</p>
+        {canDispatchEquipment ? (
+          <section className="rounded-3xl border-l-8 border-slate-400 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3 border-b pb-3">
+              <div>
+                <h3 className="text-2xl font-black uppercase">Unassigned / Yard / Other</h3>
+                <p className="text-sm text-slate-500">{unassignedEquipment.length} equipment not assigned to a job • {unassignedOpenOrders.length} open work orders without a job</p>
+              </div>
             </div>
-          </div>
 
-          {unassignedEquipment.length === 0 ? (
-            <EmptyBox text="No unassigned equipment." />
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {unassignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
-            </div>
-          )}
-        </section>
+            {unassignedEquipment.length === 0 ? (
+              <EmptyBox text="No unassigned equipment." />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {unassignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
+              </div>
+            )}
+          </section>
+        ) : null}
       </div>
     </section>
   );
