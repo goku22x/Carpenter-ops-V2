@@ -25,7 +25,7 @@ function canDispatch(profile: { role?: string | null; department?: string | null
   const role = (profile.role ?? "").toLowerCase();
   const department = (profile.department ?? "").toLowerCase();
 
-  return ["admin", "manager", "dispatcher", "superintendent"].includes(role) || department.includes("equipment");
+  return ["admin", "manager", "dispatcher", "operations", "superintendent"].includes(role) || department.includes("dispatch") || department.includes("equipment") || department.includes("operations");
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -57,16 +57,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   if (workOrderError) return NextResponse.json({ error: workOrderError.message }, { status: 400 });
 
-  if (workOrder.work_type !== "Mobilization") {
-    return NextResponse.json({ error: "This assignment flow is only for mobilization requests." }, { status: 400 });
+  if (!["Equipment Request", "Mobilization"].includes(workOrder.work_type)) {
+    return NextResponse.json({ error: "This assignment flow is only for equipment requests." }, { status: 400 });
   }
 
   if (["Complete", "Closed"].includes(workOrder.status)) {
-    return NextResponse.json({ error: "This mobilization is already complete." }, { status: 400 });
+    return NextResponse.json({ error: "This equipment request is already complete." }, { status: 400 });
   }
 
   if (!workOrder.job_id) {
-    return NextResponse.json({ error: "Mobilization must be tied to a job before equipment can be assigned." }, { status: 400 });
+    return NextResponse.json({ error: "Equipment request must be tied to a job before equipment can be assigned." }, { status: 400 });
   }
 
   const { data: job, error: jobError } = await supabase
@@ -142,7 +142,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     equipment_id: equipmentId,
     job_id: workOrder.job_id,
     assigned_by_profile_id: profile.id,
-    note: `Assigned from mobilization request ${workOrder.title}.`
+    note: `Assigned from equipment request ${workOrder.title}.`
   });
 
   const nextDescription = [
