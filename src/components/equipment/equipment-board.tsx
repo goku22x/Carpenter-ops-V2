@@ -149,7 +149,7 @@ function getCurrentPerson(profile: Profile | undefined, personnel: PersonnelWith
 }
 
 function getDefaultRequestDescription(type: string) {
-  return `${type} request created from Operations Board.`;
+  return `${type} work order created from Operations Board.`;
 }
 
 function parseDate(value?: string | null) {
@@ -447,9 +447,9 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const personnelWithJob = personnel as PersonnelWithJob[];
   const currentPerson = getCurrentPerson(profile, personnelWithJob);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
-  const [quickRequestJobId, setQuickRequestJobId] = useState<string | null>(null);
-  const [quickRequestType, setQuickRequestType] = useState<string>("Survey");
-  const [quickRequestForm, setQuickRequestForm] = useState<Record<string, string>>({});
+  const [workOrderJobId, setWorkOrderJobId] = useState<string | null>(null);
+  const [workOrderType, setWorkOrderType] = useState<string>("Survey");
+  const [workOrderForm, setWorkOrderForm] = useState<Record<string, string>>({});
   const [quickSaving, setQuickSaving] = useState(false);
   const [maintenanceEquipmentId, setMaintenanceEquipmentId] = useState<string | null>(null);
   const isAdmin = profile?.role === "admin";
@@ -506,56 +506,56 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
 
 
   function openRequestForm(jobId: string, type: string) {
-    setQuickRequestJobId(jobId);
-    setQuickRequestType(type);
-    setQuickRequestForm({});
+    setWorkOrderJobId(jobId);
+    setWorkOrderType(type);
+    setWorkOrderForm({});
     setMaintenanceEquipmentId(null);
   }
 
   function openMaintenanceRequestForm(jobId: string, equipmentId: string) {
-    setQuickRequestJobId(jobId);
-    setQuickRequestType("Maintenance");
+    setWorkOrderJobId(jobId);
+    setWorkOrderType("Maintenance");
     setMaintenanceEquipmentId(equipmentId);
-    setQuickRequestForm({
+    setWorkOrderForm({
       related_equipment_id: equipmentId
     });
   }
 
-  function updateQuickRequestField(key: string, value: string) {
-    setQuickRequestForm((current) => ({
+  function updateWorkOrderField(key: string, value: string) {
+    setWorkOrderForm((current) => ({
       ...current,
       [key]: value
     }));
   }
 
   function closeRequestForm() {
-    setQuickRequestJobId(null);
-    setQuickRequestType("Survey");
-    setQuickRequestForm({});
+    setWorkOrderJobId(null);
+    setWorkOrderType("Survey");
+    setWorkOrderForm({});
     setMaintenanceEquipmentId(null);
   }
 
   function getRequestTitle(type: string) {
     switch (type) {
       case "Survey":
-        return "Survey Request";
+        return "Survey Work Order";
       case "Maintenance":
-        return "Maintenance Request";
+        return "Maintenance Work Order";
       case "Mobilization":
-        return "Mobilization Request";
+        return "Mobilization Work Order";
       case "Trucking":
-        return "Trucking Request";
+        return "Trucking Work Order";
       case "Foreman Assignment":
         return "Foreman Assignment";
       case "Office":
-        return "Office Request";
+        return "Office Work Order";
       default:
         return `${type} Request`;
     }
   }
 
   function buildRequestPayload(jobId: string, type: string) {
-    const fields = quickRequestForm;
+    const fields = workOrderForm;
 
     if (type === "Survey") {
       if (!fields.survey_type || !fields.location_details) {
@@ -565,7 +565,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       return {
         job_id: jobId,
         work_type: type,
-        title: "Survey Request",
+        title: "Survey Work Order",
         description: fields.location_details,
         priority: fields.priority || "Medium",
         status: "New",
@@ -586,7 +586,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       return {
         job_id: jobId,
         work_type: type,
-        title: "Maintenance Request",
+        title: "Maintenance Work Order",
         description: fields.issue,
         priority: fields.priority || "Medium",
         status: "New",
@@ -607,7 +607,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       return {
         job_id: jobId,
         work_type: type,
-        title: "Mobilization Request",
+        title: "Mobilization Work Order",
         description: fields.notes || `${fields.equipment_type_needed} needed`,
         priority: fields.priority || "Medium",
         status: "New",
@@ -629,7 +629,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       return {
         job_id: jobId,
         work_type: type,
-        title: "Trucking Request",
+        title: "Trucking Work Order",
         description: fields.notes || `${fields.truck_count} trucks / ${fields.load_count} loads`,
         priority: fields.priority || "Medium",
         status: "New",
@@ -669,7 +669,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       return {
         job_id: jobId,
         work_type: type,
-        title: "Office Request",
+        title: "Office Work Order",
         description: fields.request_details,
         priority: fields.priority || "Medium",
         status: "New",
@@ -795,7 +795,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     }
   }
 
-  async function createQuickRequest(jobId: string, type: string) {
+  async function createWorkOrder(jobId: string, type: string) {
     setQuickSaving(true);
 
     try {
@@ -829,7 +829,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
 
       closeRequestForm();
       await onWorkOrdersChanged?.();
-      alert(`${type} request created.`);
+      alert(`${type} work order created.`);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Could not create request.");
     } finally {
@@ -837,7 +837,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     }
   }
 
-  function RequestFormFields({ jobId }: { jobId: string }) {
+  function WorkOrderFormFields({ jobId }: { jobId: string }) {
     const jobEquipment = equipment.filter((item) => item.current_job_id === jobId);
 
     const priorityField = (
@@ -845,8 +845,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
         <label className="label">Priority</label>
         <select
           className="input bg-white"
-          value={quickRequestForm.priority ?? "Medium"}
-          onChange={(event) => updateQuickRequestField("priority", event.target.value)}
+          value={workOrderForm.priority ?? "Medium"}
+          onChange={(event) => updateWorkOrderField("priority", event.target.value)}
         >
           <option value="Critical">Critical</option>
           <option value="High">High</option>
@@ -862,13 +862,13 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
         <input
           className="input bg-white"
           type="date"
-          value={quickRequestForm.due_date ?? ""}
-          onChange={(event) => updateQuickRequestField("due_date", event.target.value)}
+          value={workOrderForm.due_date ?? ""}
+          onChange={(event) => updateWorkOrderField("due_date", event.target.value)}
         />
       </div>
     );
 
-    if (quickRequestType === "Survey") {
+    if (workOrderType === "Survey") {
       return (
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -876,8 +876,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <label className="label">Survey Type *</label>
               <select
                 className="input bg-white"
-                value={quickRequestForm.survey_type ?? ""}
-                onChange={(event) => updateQuickRequestField("survey_type", event.target.value)}
+                value={workOrderForm.survey_type ?? ""}
+                onChange={(event) => updateWorkOrderField("survey_type", event.target.value)}
               >
                 <option value="">Select</option>
                 <option value="Stakeout">Stakeout</option>
@@ -897,16 +897,16 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <textarea
               className="input min-h-24 bg-white"
               placeholder="Example: Stake MH-12 to MH-15 sewer, curb line at west entrance, as-built storm run..."
-              value={quickRequestForm.location_details ?? ""}
-              onChange={(event) => updateQuickRequestField("location_details", event.target.value)}
+              value={workOrderForm.location_details ?? ""}
+              onChange={(event) => updateWorkOrderField("location_details", event.target.value)}
             />
           </div>
         </div>
       );
     }
 
-    if (quickRequestType === "Maintenance") {
-      const selectedEquipment = equipment.find((item) => item.id === quickRequestForm.related_equipment_id);
+    if (workOrderType === "Maintenance") {
+      const selectedEquipment = equipment.find((item) => item.id === workOrderForm.related_equipment_id);
 
       return (
         <div className="grid gap-3">
@@ -920,8 +920,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               ) : (
                 <select
                   className="input bg-white"
-                  value={quickRequestForm.related_equipment_id ?? ""}
-                  onChange={(event) => updateQuickRequestField("related_equipment_id", event.target.value)}
+                  value={workOrderForm.related_equipment_id ?? ""}
+                  onChange={(event) => updateWorkOrderField("related_equipment_id", event.target.value)}
                 >
                   <option value="">Select equipment</option>
                   {jobEquipment.map((item) => (
@@ -944,8 +944,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <label className="label">Can it run?</label>
               <select
                 className="input bg-white"
-                value={quickRequestForm.can_run ?? ""}
-                onChange={(event) => updateQuickRequestField("can_run", event.target.value)}
+                value={workOrderForm.can_run ?? ""}
+                onChange={(event) => updateWorkOrderField("can_run", event.target.value)}
               >
                 <option value="">Select</option>
                 <option value="Yes">Yes</option>
@@ -962,15 +962,15 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <textarea
               className="input min-h-24 bg-white"
               placeholder="Example: hydraulic leak, flat tire, won't start, service needed..."
-              value={quickRequestForm.issue ?? ""}
-              onChange={(event) => updateQuickRequestField("issue", event.target.value)}
+              value={workOrderForm.issue ?? ""}
+              onChange={(event) => updateWorkOrderField("issue", event.target.value)}
             />
           </div>
         </div>
       );
     }
 
-    if (quickRequestType === "Mobilization") {
+    if (workOrderType === "Mobilization") {
       return (
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-4">
@@ -978,8 +978,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <label className="label">Equipment Type *</label>
               <select
                 className="input bg-white"
-                value={quickRequestForm.equipment_type_needed ?? ""}
-                onChange={(event) => updateQuickRequestField("equipment_type_needed", event.target.value)}
+                value={workOrderForm.equipment_type_needed ?? ""}
+                onChange={(event) => updateWorkOrderField("equipment_type_needed", event.target.value)}
               >
                 <option value="">Select type</option>
                 {EQUIPMENT_TYPES.map((type) => (
@@ -993,8 +993,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <input
                 className="input bg-white"
                 placeholder="1"
-                value={quickRequestForm.quantity ?? ""}
-                onChange={(event) => updateQuickRequestField("quantity", event.target.value)}
+                value={workOrderForm.quantity ?? ""}
+                onChange={(event) => updateWorkOrderField("quantity", event.target.value)}
               />
             </div>
 
@@ -1007,15 +1007,15 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <textarea
               className="input min-h-20 bg-white"
               placeholder="Where from, where to, timing, access notes..."
-              value={quickRequestForm.notes ?? ""}
-              onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+              value={workOrderForm.notes ?? ""}
+              onChange={(event) => updateWorkOrderField("notes", event.target.value)}
             />
           </div>
         </div>
       );
     }
 
-    if (quickRequestType === "Trucking") {
+    if (workOrderType === "Trucking") {
       return (
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-4">
@@ -1024,8 +1024,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <input
                 className="input bg-white"
                 placeholder="4"
-                value={quickRequestForm.truck_count ?? ""}
-                onChange={(event) => updateQuickRequestField("truck_count", event.target.value)}
+                value={workOrderForm.truck_count ?? ""}
+                onChange={(event) => updateWorkOrderField("truck_count", event.target.value)}
               />
             </div>
 
@@ -1034,8 +1034,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <input
                 className="input bg-white"
                 placeholder="120"
-                value={quickRequestForm.load_count ?? ""}
-                onChange={(event) => updateQuickRequestField("load_count", event.target.value)}
+                value={workOrderForm.load_count ?? ""}
+                onChange={(event) => updateWorkOrderField("load_count", event.target.value)}
               />
             </div>
 
@@ -1044,8 +1044,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <input
                 className="input bg-white"
                 placeholder="Dirt, rock, select fill"
-                value={quickRequestForm.material ?? ""}
-                onChange={(event) => updateQuickRequestField("material", event.target.value)}
+                value={workOrderForm.material ?? ""}
+                onChange={(event) => updateWorkOrderField("material", event.target.value)}
               />
             </div>
 
@@ -1057,15 +1057,15 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <textarea
               className="input min-h-20 bg-white"
               placeholder="From/to, start time, truck type, dump location..."
-              value={quickRequestForm.notes ?? ""}
-              onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+              value={workOrderForm.notes ?? ""}
+              onChange={(event) => updateWorkOrderField("notes", event.target.value)}
             />
           </div>
         </div>
       );
     }
 
-    if (quickRequestType === "Foreman Assignment") {
+    if (workOrderType === "Foreman Assignment") {
       return (
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -1074,8 +1074,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               <input
                 className="input bg-white"
                 placeholder="Optional"
-                value={quickRequestForm.foreman_name ?? ""}
-                onChange={(event) => updateQuickRequestField("foreman_name", event.target.value)}
+                value={workOrderForm.foreman_name ?? ""}
+                onChange={(event) => updateWorkOrderField("foreman_name", event.target.value)}
               />
             </div>
             {dueDateField}
@@ -1087,15 +1087,15 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <textarea
               className="input min-h-20 bg-white"
               placeholder="Start date, crew needs, special instructions..."
-              value={quickRequestForm.notes ?? ""}
-              onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+              value={workOrderForm.notes ?? ""}
+              onChange={(event) => updateWorkOrderField("notes", event.target.value)}
             />
           </div>
         </div>
       );
     }
 
-    if (quickRequestType === "Office") {
+    if (workOrderType === "Office") {
       return (
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1108,8 +1108,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <textarea
               className="input min-h-24 bg-white"
               placeholder="Plans, paperwork, contact info, ticket, invoice, permit, etc."
-              value={quickRequestForm.request_details ?? ""}
-              onChange={(event) => updateQuickRequestField("request_details", event.target.value)}
+              value={workOrderForm.request_details ?? ""}
+              onChange={(event) => updateWorkOrderField("request_details", event.target.value)}
             />
           </div>
         </div>
@@ -1122,8 +1122,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
         <textarea
           className="input min-h-20 bg-white"
           placeholder="What needs done?"
-          value={quickRequestForm.notes ?? ""}
-          onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+          value={workOrderForm.notes ?? ""}
+          onChange={(event) => updateWorkOrderField("notes", event.target.value)}
         />
       </div>
     );
@@ -1134,7 +1134,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       <div className="card">
         <h2 className="text-2xl font-black">Operations Board</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Home screen for daily operations. Expand a job to see project files, construction calendar, and quick request buttons.
+          Home screen for daily operations. Expand a job to see project files, construction calendar, and work order buttons.
         </p>
       </div>
 
@@ -1158,7 +1158,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                 <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
                   <CountBadge label="Personnel" count={assignedPersonnel.length} />
                   <CountBadge label="Equipment" count={assignedEquipment.length} />
-                  <CountBadge label="Requests" count={openWorkOrders.length} warn={importantOpenOrders.length > 0} />
+                  <CountBadge label="Work Orders" count={openWorkOrders.length} warn={importantOpenOrders.length > 0} />
                 </div>
               </div>
 
@@ -1180,7 +1180,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     {QUICK_REQUESTS.map((type) => (
                       <button
                         key={type}
-                        className={quickRequestJobId === job.id && quickRequestType === type ? "btn-primary" : "btn-secondary"}
+                        className={workOrderJobId === job.id && workOrderType === type ? "btn-primary" : "btn-secondary"}
                         onClick={() => openRequestForm(job.id, type)}
                       >
                         + {type}
@@ -1188,13 +1188,13 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     ))}
                   </div>
 
-                  {quickRequestJobId === job.id ? (
+                  {workOrderJobId === job.id ? (
                     <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <h4 className="font-black">Create {quickRequestType} Request</h4>
+                          <h4 className="font-black">Create {workOrderType} Request</h4>
                           <p className="text-xs font-bold text-slate-600">
-                            {quickRequestType === "Maintenance"
+                            {workOrderType === "Maintenance"
                               ? "Maintenance is opened from the selected equipment card and preloads this job/machine."
                               : "This opens the correct form for the selected department and preloads this job."}
                           </p>
@@ -1205,12 +1205,12 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                       </div>
 
                       <div className="mt-3 rounded-2xl border bg-white/70 p-3">
-                        <RequestFormFields jobId={job.id} />
+                        <WorkOrderFormFields jobId={job.id} />
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <button className="btn-primary" disabled={quickSaving} onClick={() => createQuickRequest(job.id, quickRequestType)}>
-                          {quickSaving ? "Creating..." : `Submit ${quickRequestType} Request`}
+                        <button className="btn-primary" disabled={quickSaving} onClick={() => createWorkOrder(job.id, workOrderType)}>
+                          {quickSaving ? "Creating..." : `Submit ${workOrderType} Request`}
                         </button>
                         <button className="btn-secondary" disabled={quickSaving} onClick={closeRequestForm}>
                           Cancel
@@ -1389,7 +1389,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                     </div>
 
                     <div className="rounded-2xl border bg-white p-3">
-                      <h4 className="font-black">Open Requests ({openWorkOrders.length})</h4>
+                      <h4 className="font-black">Open Work Orders ({openWorkOrders.length})</h4>
                       {openWorkOrders.length === 0 ? (
                         <p className="mt-2 text-sm text-slate-500">No open work orders for this job.</p>
                       ) : (
@@ -1404,7 +1404,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                               <div className="text-xs text-slate-500">{order.description || "No description"}</div>
                             </div>
                           ))}
-                          {openWorkOrders.length > 6 ? <div className="text-xs font-black text-slate-500">+{openWorkOrders.length - 6} more open requests</div> : null}
+                          {openWorkOrders.length > 6 ? <div className="text-xs font-black text-slate-500">+{openWorkOrders.length - 6} more open work orders</div> : null}
                         </div>
                       )}
                     </div>
@@ -1424,7 +1424,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
           <div className="mb-3 flex items-center justify-between gap-3 border-b pb-3">
             <div>
               <h3 className="text-2xl font-black uppercase">Unassigned / Yard / Other</h3>
-              <p className="text-sm text-slate-500">{unassignedEquipment.length} equipment not assigned to a job • {unassignedOpenOrders.length} open requests without a job</p>
+              <p className="text-sm text-slate-500">{unassignedEquipment.length} equipment not assigned to a job • {unassignedOpenOrders.length} open work orders without a job</p>
             </div>
           </div>
 
