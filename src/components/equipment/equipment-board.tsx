@@ -1699,8 +1699,6 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
               {expanded ? (
 
 
-              {expanded ? (
-
             </section>
           );
         })}
