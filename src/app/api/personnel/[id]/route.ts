@@ -56,13 +56,24 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     return NextResponse.json({ error: "Admin only." }, { status: 403 });
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("personnel")
-    .delete()
+    .update({ active: false, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .select()
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  await supabase.from("audit_log").insert({
+    organization_id: profile.organization_id,
+    actor_profile_id: profile.id,
+    action: "deactivate",
+    table_name: "personnel",
+    record_id: id,
+    new_value: data
+  });
 
   return NextResponse.json({ ok: true });
 }

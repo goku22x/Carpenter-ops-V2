@@ -59,5 +59,23 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  await supabase.from("work_order_events").insert({
+    organization_id: profile.organization_id,
+    work_order_id: data.id,
+    event_type: "created",
+    to_status: data.status,
+    note: "Work order created.",
+    created_by_profile_id: profile.id
+  });
+
+  await supabase.from("audit_log").insert({
+    organization_id: profile.organization_id,
+    actor_profile_id: profile.id,
+    action: "create",
+    table_name: "work_orders",
+    record_id: data.id,
+    new_value: data
+  });
+
   return NextResponse.json(data, { status: 201 });
 }

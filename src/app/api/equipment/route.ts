@@ -21,6 +21,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("equipment")
     .select("*")
+    .neq("status", "Archived")
     .order("equipment_type", { ascending: true })
     .order("name", { ascending: true });
 

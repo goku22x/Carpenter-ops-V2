@@ -93,13 +93,27 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
 
   if (unassignError) return NextResponse.json({ error: unassignError.message }, { status: 400 });
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("jobs")
-    .delete()
+    .update({
+      active: false,
+      updated_at: new Date().toISOString()
+    })
     .eq("id", id)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .select()
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  await supabase.from("audit_log").insert({
+    organization_id: profile.organization_id,
+    actor_profile_id: profile.id,
+    action: "archive",
+    table_name: "jobs",
+    record_id: id,
+    new_value: data
+  });
 
   return NextResponse.json({ ok: true });
 }
