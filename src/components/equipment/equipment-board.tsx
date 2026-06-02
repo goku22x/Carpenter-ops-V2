@@ -1696,7 +1696,6 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                 </div>
               ) : null}
 
-              {expanded ? (
 
             </section>
           );
