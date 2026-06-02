@@ -9,6 +9,8 @@ import { EquipmentBoard } from "@/components/equipment/equipment-board";
 import { PersonnelModule } from "@/components/personnel/personnel-module";
 import { WorkOrdersModule } from "@/components/work-orders/work-orders-module";
 import { UserWorkCalendar } from "@/components/dashboard/user-work-calendar";
+import { TimekeepingModule } from "@/components/timekeeping/timekeeping-module";
+import { canApproveTimekeeping, canManagePersonnel, canManageTimekeeping, canUseDepartmentWork, isAdmin, isDispatcher } from "@/lib/permissions/roles";
 
 type Props = {
   userEmail: string;
@@ -41,15 +43,17 @@ function isDepartmentWorkProfile(profile: Profile) {
 
 export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment, initialPersonnel, initialWorkOrders }: Props) {
   const supabase = createClient();
-  const [view, setView] = useState<"calendar" | "jobs" | "personnel" | "equipment" | "work" | "operations">("operations");
+  const [view, setView] = useState<"calendar" | "jobs" | "personnel" | "equipment" | "work" | "operations" | "time">("operations");
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [equipment, setEquipment] = useState<Equipment[]>(initialEquipment);
   const [personnel, setPersonnel] = useState<Personnel[]>(initialPersonnel);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>(initialWorkOrders);
   const [loggingOut, setLoggingOut] = useState(false);
-  const canAdmin = isAdminProfile(profile);
-  const canDispatch = isDispatcherProfile(profile);
-  const canUseWorkOrders = isDepartmentWorkProfile(profile);
+  const canAdmin = isAdmin(profile);
+  const canDispatch = isDispatcher(profile);
+  const canUseWorkOrders = canUseDepartmentWork(profile);
+  const canUseTime = canManageTimekeeping(profile);
+  const canPersonnelAdmin = canManagePersonnel(profile);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -117,8 +121,11 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
           {canAdmin ? (
             <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Job Setup</button>
           ) : null}
-          {canAdmin ? (
+          {canPersonnelAdmin ? (
             <button className={view === "personnel" ? "btn-primary" : "btn-secondary"} onClick={() => setView("personnel")}>Personnel Admin</button>
+          ) : null}
+          {canUseTime ? (
+            <button className={view === "time" ? "btn-primary" : "btn-secondary"} onClick={() => setView("time")}>Timekeeping</button>
           ) : null}
           {canDispatch ? (
             <button className={view === "equipment" ? "btn-primary" : "btn-secondary"} onClick={() => setView("equipment")}>Equipment Dispatch</button>
@@ -163,7 +170,7 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
         />
       ) : null}
 
-      {view === "personnel" && canAdmin ? (
+      {view === "personnel" && canPersonnelAdmin ? (
         <PersonnelModule
           personnel={personnel}
           isAdmin={canAdmin}
@@ -171,6 +178,10 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
             await refreshPersonnel();
           }}
         />
+      ) : null}
+
+      {view === "time" && canUseTime ? (
+        <TimekeepingModule profile={profile} jobs={jobs} personnel={personnel} />
       ) : null}
 
       {view === "equipment" && canDispatch ? (
