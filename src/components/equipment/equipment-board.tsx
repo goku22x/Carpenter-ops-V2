@@ -1703,6 +1703,33 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                   </div>
                 </div>
               ) : null}
+
+              {expanded ? (
+                <div className="mt-4 border-t pt-4">
+                  <div className="rounded-2xl border bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="font-black">Equipment on Job ({assignedEquipment.length})</h4>
+                      <span className="text-xs font-bold text-slate-500">
+                        Visible on the board. Maintenance work orders start from the machine card.
+                      </span>
+                    </div>
+
+                    {assignedEquipment.length === 0 ? (
+                      <EmptyBox text="No equipment assigned to this job." />
+                    ) : (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {assignedEquipment.map((item) => (
+                          <EquipmentCard
+                            key={item.id}
+                            item={item}
+                            onMaintenance={(equipmentId) => openMaintenanceRequestForm(job.id, equipmentId)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </section>
           );
         })}
