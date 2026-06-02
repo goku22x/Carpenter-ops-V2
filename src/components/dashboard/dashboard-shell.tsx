@@ -168,6 +168,9 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
           onJobsChanged={async () => {
             await refreshJobs();
           }}
+          onEquipmentChanged={async () => {
+            await refreshEquipment();
+          }}
         />
       ) : null}
     </main>
