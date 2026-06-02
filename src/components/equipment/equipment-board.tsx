@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Equipment, Job, Personnel, Profile, WorkOrder } from "@/lib/types";
-import { equipmentStatusDot, equipmentTypeStyle } from "@/lib/equipment-types";
+import { EQUIPMENT_TYPES, equipmentStatusDot, equipmentTypeStyle } from "@/lib/equipment-types";
 import { phaseColorClass } from "@/lib/phases";
 import { formatDate } from "@/lib/date-format";
 import { getWorkOrderTypeColor } from "@/lib/work-orders";
@@ -437,7 +437,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [quickRequestJobId, setQuickRequestJobId] = useState<string | null>(null);
   const [quickRequestType, setQuickRequestType] = useState<string>("Survey");
-  const [quickRequestNote, setQuickRequestNote] = useState("");
+  const [quickRequestForm, setQuickRequestForm] = useState<Record<string, string>>({});
   const [quickSaving, setQuickSaving] = useState(false);
   const isAdmin = profile?.role === "admin";
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
@@ -490,6 +490,185 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       .sort((a, b) => b.sortScore - a.sortScore || a.job.name.localeCompare(b.job.name));
   }, [activeJobs, equipment, personnelWithJob, workOrders, assignedJobIds]);
 
+
+
+  function openRequestForm(jobId: string, type: string) {
+    setQuickRequestJobId(jobId);
+    setQuickRequestType(type);
+    setQuickRequestForm({});
+  }
+
+  function updateQuickRequestField(key: string, value: string) {
+    setQuickRequestForm((current) => ({
+      ...current,
+      [key]: value
+    }));
+  }
+
+  function closeRequestForm() {
+    setQuickRequestJobId(null);
+    setQuickRequestType("Survey");
+    setQuickRequestForm({});
+  }
+
+  function getRequestTitle(type: string) {
+    switch (type) {
+      case "Survey":
+        return "Survey Request";
+      case "Maintenance":
+        return "Maintenance Request";
+      case "Mobilization":
+        return "Mobilization Request";
+      case "Trucking":
+        return "Trucking Request";
+      case "Foreman Assignment":
+        return "Foreman Assignment";
+      case "Office":
+        return "Office Request";
+      default:
+        return `${type} Request`;
+    }
+  }
+
+  function buildRequestPayload(jobId: string, type: string) {
+    const fields = quickRequestForm;
+
+    if (type === "Survey") {
+      if (!fields.survey_type || !fields.location_details) {
+        throw new Error("Survey request needs survey type and location/details.");
+      }
+
+      return {
+        job_id: jobId,
+        work_type: type,
+        title: "Survey Request",
+        description: fields.location_details,
+        priority: fields.priority || "Medium",
+        status: "New",
+        assigned_personnel_id: null,
+        related_equipment_id: null,
+        due_date: fields.due_date || null,
+        custom_fields: {
+          survey_type: fields.survey_type
+        }
+      };
+    }
+
+    if (type === "Maintenance") {
+      if (!fields.related_equipment_id || !fields.issue) {
+        throw new Error("Maintenance request needs equipment and issue.");
+      }
+
+      return {
+        job_id: jobId,
+        work_type: type,
+        title: "Maintenance Request",
+        description: fields.issue,
+        priority: fields.priority || "Medium",
+        status: "New",
+        assigned_personnel_id: null,
+        related_equipment_id: fields.related_equipment_id,
+        due_date: fields.due_date || null,
+        custom_fields: {
+          can_run: fields.can_run || ""
+        }
+      };
+    }
+
+    if (type === "Mobilization") {
+      if (!fields.equipment_type_needed) {
+        throw new Error("Mobilization request needs equipment type.");
+      }
+
+      return {
+        job_id: jobId,
+        work_type: type,
+        title: "Mobilization Request",
+        description: fields.notes || `${fields.equipment_type_needed} needed`,
+        priority: fields.priority || "Medium",
+        status: "New",
+        assigned_personnel_id: null,
+        related_equipment_id: null,
+        due_date: fields.due_date || null,
+        custom_fields: {
+          equipment_type_needed: fields.equipment_type_needed,
+          quantity: fields.quantity || "1"
+        }
+      };
+    }
+
+    if (type === "Trucking") {
+      if (!fields.truck_count || !fields.load_count) {
+        throw new Error("Trucking request needs # trucks and # loads.");
+      }
+
+      return {
+        job_id: jobId,
+        work_type: type,
+        title: "Trucking Request",
+        description: fields.notes || `${fields.truck_count} trucks / ${fields.load_count} loads`,
+        priority: fields.priority || "Medium",
+        status: "New",
+        assigned_personnel_id: null,
+        related_equipment_id: null,
+        due_date: fields.due_date || null,
+        custom_fields: {
+          truck_count: fields.truck_count,
+          load_count: fields.load_count,
+          material: fields.material || ""
+        }
+      };
+    }
+
+    if (type === "Foreman Assignment") {
+      return {
+        job_id: jobId,
+        work_type: type,
+        title: "Foreman Assignment",
+        description: fields.notes || "Assign foreman / crew.",
+        priority: fields.priority || "Medium",
+        status: "New",
+        assigned_personnel_id: null,
+        related_equipment_id: null,
+        due_date: fields.due_date || null,
+        custom_fields: {
+          foreman_name: fields.foreman_name || ""
+        }
+      };
+    }
+
+    if (type === "Office") {
+      if (!fields.request_details) {
+        throw new Error("Office request needs what you need.");
+      }
+
+      return {
+        job_id: jobId,
+        work_type: type,
+        title: "Office Request",
+        description: fields.request_details,
+        priority: fields.priority || "Medium",
+        status: "New",
+        assigned_personnel_id: null,
+        related_equipment_id: null,
+        due_date: fields.due_date || null,
+        custom_fields: {}
+      };
+    }
+
+    return {
+      job_id: jobId,
+      work_type: type,
+      title: getRequestTitle(type),
+      description: fields.notes || getDefaultRequestDescription(type),
+      priority: fields.priority || "Medium",
+      status: "New",
+      assigned_personnel_id: null,
+      related_equipment_id: null,
+      due_date: fields.due_date || null,
+      custom_fields: {}
+    };
+  }
 
   function startJobEdit(job: Job) {
     if (!isAdmin) return;
@@ -593,33 +772,21 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   }
 
   async function createQuickRequest(jobId: string, type: string) {
-    const description = quickRequestNote.trim() || getDefaultRequestDescription(type);
     setQuickSaving(true);
 
     try {
+      const payload = buildRequestPayload(jobId, type);
+
       const res = await fetch("/api/work-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          job_id: jobId,
-          work_type: type,
-          title: `${type} Request`,
-          description,
-          priority: "Medium",
-          status: "New",
-          assigned_personnel_id: null,
-          related_equipment_id: null,
-          due_date: null,
-          custom_fields: {}
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error ?? "Could not create request.");
 
-      setQuickRequestJobId(null);
-      setQuickRequestType("Survey");
-      setQuickRequestNote("");
+      closeRequestForm();
       await onWorkOrdersChanged?.();
       alert(`${type} request created.`);
     } catch (err) {
@@ -627,6 +794,290 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     } finally {
       setQuickSaving(false);
     }
+  }
+
+  function RequestFormFields({ jobId }: { jobId: string }) {
+    const jobEquipment = equipment.filter((item) => item.current_job_id === jobId);
+
+    const priorityField = (
+      <div>
+        <label className="label">Priority</label>
+        <select
+          className="input bg-white"
+          value={quickRequestForm.priority ?? "Medium"}
+          onChange={(event) => updateQuickRequestField("priority", event.target.value)}
+        >
+          <option value="Critical">Critical</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
+    );
+
+    const dueDateField = (
+      <div>
+        <label className="label">Need By</label>
+        <input
+          className="input bg-white"
+          type="date"
+          value={quickRequestForm.due_date ?? ""}
+          onChange={(event) => updateQuickRequestField("due_date", event.target.value)}
+        />
+      </div>
+    );
+
+    if (quickRequestType === "Survey") {
+      return (
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="label">Survey Type *</label>
+              <select
+                className="input bg-white"
+                value={quickRequestForm.survey_type ?? ""}
+                onChange={(event) => updateQuickRequestField("survey_type", event.target.value)}
+              >
+                <option value="">Select</option>
+                <option value="Stakeout">Stakeout</option>
+                <option value="As-Built">As-Built</option>
+                <option value="Topo">Topo</option>
+                <option value="Control">Control</option>
+                <option value="Model Check">Model Check</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            {dueDateField}
+            {priorityField}
+          </div>
+
+          <div>
+            <label className="label">Location / What Needed *</label>
+            <textarea
+              className="input min-h-24 bg-white"
+              placeholder="Example: Stake MH-12 to MH-15 sewer, curb line at west entrance, as-built storm run..."
+              value={quickRequestForm.location_details ?? ""}
+              onChange={(event) => updateQuickRequestField("location_details", event.target.value)}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (quickRequestType === "Maintenance") {
+      return (
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="label">Equipment *</label>
+              <select
+                className="input bg-white"
+                value={quickRequestForm.related_equipment_id ?? ""}
+                onChange={(event) => updateQuickRequestField("related_equipment_id", event.target.value)}
+              >
+                <option value="">Select equipment</option>
+                {jobEquipment.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} #{item.equipment_number ?? "—"}
+                  </option>
+                ))}
+                {equipment
+                  .filter((item) => item.current_job_id !== jobId)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} #{item.equipment_number ?? "—"} (Other)
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Can it run?</label>
+              <select
+                className="input bg-white"
+                value={quickRequestForm.can_run ?? ""}
+                onChange={(event) => updateQuickRequestField("can_run", event.target.value)}
+              >
+                <option value="">Select</option>
+                <option value="Yes">Yes</option>
+                <option value="No - Down">No - Down</option>
+                <option value="Barely / Needs checked">Barely / Needs checked</option>
+              </select>
+            </div>
+
+            {priorityField}
+          </div>
+
+          <div>
+            <label className="label">Issue *</label>
+            <textarea
+              className="input min-h-24 bg-white"
+              placeholder="Example: hydraulic leak, flat tire, won't start, service needed..."
+              value={quickRequestForm.issue ?? ""}
+              onChange={(event) => updateQuickRequestField("issue", event.target.value)}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (quickRequestType === "Mobilization") {
+      return (
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <div>
+              <label className="label">Equipment Type *</label>
+              <select
+                className="input bg-white"
+                value={quickRequestForm.equipment_type_needed ?? ""}
+                onChange={(event) => updateQuickRequestField("equipment_type_needed", event.target.value)}
+              >
+                <option value="">Select type</option>
+                {EQUIPMENT_TYPES.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Quantity</label>
+              <input
+                className="input bg-white"
+                placeholder="1"
+                value={quickRequestForm.quantity ?? ""}
+                onChange={(event) => updateQuickRequestField("quantity", event.target.value)}
+              />
+            </div>
+
+            {dueDateField}
+            {priorityField}
+          </div>
+
+          <div>
+            <label className="label">Move Notes</label>
+            <textarea
+              className="input min-h-20 bg-white"
+              placeholder="Where from, where to, timing, access notes..."
+              value={quickRequestForm.notes ?? ""}
+              onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (quickRequestType === "Trucking") {
+      return (
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <div>
+              <label className="label"># Trucks *</label>
+              <input
+                className="input bg-white"
+                placeholder="4"
+                value={quickRequestForm.truck_count ?? ""}
+                onChange={(event) => updateQuickRequestField("truck_count", event.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="label"># Loads *</label>
+              <input
+                className="input bg-white"
+                placeholder="120"
+                value={quickRequestForm.load_count ?? ""}
+                onChange={(event) => updateQuickRequestField("load_count", event.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="label">Material</label>
+              <input
+                className="input bg-white"
+                placeholder="Dirt, rock, select fill"
+                value={quickRequestForm.material ?? ""}
+                onChange={(event) => updateQuickRequestField("material", event.target.value)}
+              />
+            </div>
+
+            {dueDateField}
+          </div>
+
+          <div>
+            <label className="label">Haul Notes</label>
+            <textarea
+              className="input min-h-20 bg-white"
+              placeholder="From/to, start time, truck type, dump location..."
+              value={quickRequestForm.notes ?? ""}
+              onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (quickRequestType === "Foreman Assignment") {
+      return (
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="label">Requested Foreman</label>
+              <input
+                className="input bg-white"
+                placeholder="Optional"
+                value={quickRequestForm.foreman_name ?? ""}
+                onChange={(event) => updateQuickRequestField("foreman_name", event.target.value)}
+              />
+            </div>
+            {dueDateField}
+            {priorityField}
+          </div>
+
+          <div>
+            <label className="label">Crew / Assignment Notes</label>
+            <textarea
+              className="input min-h-20 bg-white"
+              placeholder="Start date, crew needs, special instructions..."
+              value={quickRequestForm.notes ?? ""}
+              onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (quickRequestType === "Office") {
+      return (
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {dueDateField}
+            {priorityField}
+          </div>
+
+          <div>
+            <label className="label">What do you need? *</label>
+            <textarea
+              className="input min-h-24 bg-white"
+              placeholder="Plans, paperwork, contact info, ticket, invoice, permit, etc."
+              value={quickRequestForm.request_details ?? ""}
+              onChange={(event) => updateQuickRequestField("request_details", event.target.value)}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <label className="label">Notes</label>
+        <textarea
+          className="input min-h-20 bg-white"
+          placeholder="What needs done?"
+          value={quickRequestForm.notes ?? ""}
+          onChange={(event) => updateQuickRequestField("notes", event.target.value)}
+        />
+      </div>
+    );
   }
 
   return (
@@ -681,11 +1132,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                       <button
                         key={type}
                         className={quickRequestJobId === job.id && quickRequestType === type ? "btn-primary" : "btn-secondary"}
-                        onClick={() => {
-                          setQuickRequestJobId(job.id);
-                          setQuickRequestType(type);
-                          setQuickRequestNote("");
-                        }}
+                        onClick={() => openRequestForm(job.id, type)}
                       >
                         + {type}
                       </button>
@@ -694,14 +1141,29 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
 
                   {quickRequestJobId === job.id ? (
                     <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3">
-                      <h4 className="font-black">Create {quickRequestType} Request</h4>
-                      <label className="label">Notes</label>
-                      <textarea className="input min-h-20 bg-white" placeholder="What needs done?" value={quickRequestNote} onChange={(event) => setQuickRequestNote(event.target.value)} />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h4 className="font-black">Create {quickRequestType} Request</h4>
+                          <p className="text-xs font-bold text-slate-600">
+                            This opens the correct form for the selected department and preloads this job.
+                          </p>
+                        </div>
+                        <button className="btn-secondary" disabled={quickSaving} onClick={closeRequestForm}>
+                          Close
+                        </button>
+                      </div>
+
+                      <div className="mt-3 rounded-2xl border bg-white/70 p-3">
+                        <RequestFormFields jobId={job.id} />
+                      </div>
+
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button className="btn-primary" disabled={quickSaving} onClick={() => createQuickRequest(job.id, quickRequestType)}>
-                          {quickSaving ? "Creating..." : "Create Request"}
+                          {quickSaving ? "Creating..." : `Submit ${quickRequestType} Request`}
                         </button>
-                        <button className="btn-secondary" disabled={quickSaving} onClick={() => setQuickRequestJobId(null)}>Cancel</button>
+                        <button className="btn-secondary" disabled={quickSaving} onClick={closeRequestForm}>
+                          Cancel
+                        </button>
                       </div>
                     </div>
                   ) : null}
