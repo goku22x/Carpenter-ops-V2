@@ -1009,7 +1009,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     }
   }
 
-  function WorkOrderFormFields({ jobId }: { jobId: string }) {
+  function renderWorkOrderFormFields(jobId: string) {
     const jobEquipment = equipment.filter((item) => item.current_job_id === jobId);
 
     const priorityField = (
@@ -1384,7 +1384,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                       </div>
 
                       <div className="mt-3 rounded-2xl border bg-white/70 p-3">
-                        <WorkOrderFormFields jobId={job.id} />
+                        {renderWorkOrderFormFields(job.id)}
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2">
