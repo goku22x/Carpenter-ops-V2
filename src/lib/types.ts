@@ -30,6 +30,10 @@ export type Profile = {
   full_name: string | null;
   role: string;
   department: string | null;
+  phone?: string | null;
+  active?: boolean;
+  status?: string | null;
+  created_at?: string;
 };
 
 export type Equipment = {
