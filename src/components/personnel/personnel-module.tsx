@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Personnel } from "@/lib/types";
+import type { Personnel, Profile } from "@/lib/types";
 
 type Props = {
   personnel: Personnel[];
   isAdmin: boolean;
   onPersonnelChanged: () => Promise<void> | void;
+};
+
+type UserProfile = Profile & {
+  phone?: string | null;
+  active?: boolean;
+  status?: string | null;
+  created_at?: string;
 };
 
 const emptyForm = {
@@ -19,7 +26,9 @@ const emptyForm = {
   active: true
 };
 
-const DEPARTMENTS = ["Survey", "Earthwork", "Utilities", "Maintenance", "Mobilization", "Trucks", "Office", "Management", "Other"];
+const DEPARTMENTS = ["Dispatch", "Survey", "Earthwork", "Utilities", "Maintenance", "Mobilization", "Trucks", "Office", "Management", "Other"];
+const USER_ROLES = ["admin", "dispatcher", "maintenance", "survey", "foreman", "field", "manager", "viewer"];
+const USER_STATUSES = ["pending", "active", "disabled"];
 
 function formFromPerson(person?: Personnel) {
   if (!person) return emptyForm;
@@ -34,6 +43,21 @@ function formFromPerson(person?: Personnel) {
   };
 }
 
+function normalizeStatus(profile: UserProfile) {
+  if (profile.status) return profile.status;
+  return profile.active === false ? "disabled" : "active";
+}
+
+function statusBadgeClass(status: string) {
+  if (status === "active") return "bg-green-100 text-green-800";
+  if (status === "pending") return "bg-yellow-100 text-yellow-900";
+  return "bg-slate-200 text-slate-700";
+}
+
+function roleLabel(role: string | null | undefined) {
+  return (role || "viewer").replace(/_/g, " ");
+}
+
 export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Props) {
   const [selectedId, setSelectedId] = useState<string | "new">(personnel[0]?.id ?? "new");
   const selected = personnel.find((person) => person.id === selectedId);
@@ -41,6 +65,9 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(() => formFromPerson(selected));
+  const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
 
   const filteredPersonnel = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -55,12 +82,34 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
     );
   }, [personnel, search]);
 
+  const pendingProfiles = userProfiles.filter((profile) => normalizeStatus(profile) === "pending");
+
   useEffect(() => {
     if (selectedId === "new") return;
     const freshSelected = personnel.find((person) => person.id === selectedId);
     if (!freshSelected && personnel.length > 0) selectPerson(personnel[0]);
     if (!freshSelected && personnel.length === 0) selectNewPerson();
   }, [personnel, selectedId]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void refreshUserProfiles();
+  }, [isAdmin]);
+
+  async function refreshUserProfiles() {
+    setLoadingUsers(true);
+
+    try {
+      const res = await fetch("/api/personnel/profiles", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Could not load user accounts.");
+      setUserProfiles(data ?? []);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not load user accounts.");
+    } finally {
+      setLoadingUsers(false);
+    }
+  }
 
   function selectNewPerson() {
     setSelectedId("new");
@@ -114,7 +163,7 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
     if (!isAdmin) return alert("Admin only.");
     if (selectedId === "new") return;
 
-    const ok = confirm(`Delete ${selected?.full_name ?? "this person"}? This cannot be undone.`);
+    const ok = confirm(`Deactivate ${selected?.full_name ?? "this person"}? This keeps history but removes them from active personnel.`);
     if (!ok) return;
 
     setDeleting(true);
@@ -122,15 +171,46 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
     try {
       const res = await fetch(`/api/personnel/${selectedId}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error ?? "Delete failed.");
+      if (!res.ok) throw new Error(data?.error ?? "Deactivate failed.");
 
       await onPersonnelChanged();
       selectNewPerson();
-      alert("Personnel deleted.");
+      alert("Personnel deactivated.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Delete failed.");
+      alert(err instanceof Error ? err.message : "Deactivate failed.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function saveUserProfile(profile: UserProfile, patch: Partial<UserProfile>) {
+    if (!isAdmin) return alert("Admin only.");
+
+    const nextProfile: UserProfile = { ...profile, ...patch };
+    setSavingUserId(profile.id);
+
+    try {
+      const res = await fetch("/api/personnel/profiles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: nextProfile.id,
+          full_name: nextProfile.full_name || null,
+          role: nextProfile.role || "viewer",
+          department: nextProfile.department || null,
+          phone: nextProfile.phone || null,
+          status: normalizeStatus(nextProfile)
+        })
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "User update failed.");
+
+      setUserProfiles((current) => current.map((item) => (item.id === data.id ? data : item)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "User update failed.");
+    } finally {
+      setSavingUserId(null);
     }
   }
 
@@ -160,100 +240,184 @@ export function PersonnelModule({ personnel, isAdmin, onPersonnelChanged }: Prop
     );
   }
 
-  return (
-    <section className="mt-4 grid gap-4 lg:grid-cols-[420px_1fr]">
-      <aside className="card h-fit lg:sticky lg:top-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-black">Personnel</h2>
-            <p className="mt-1 text-xs font-bold text-slate-500">{personnel.length} records</p>
+  function UserAccountCard({ profile }: { profile: UserProfile }) {
+    const status = normalizeStatus(profile);
+    const isSaving = savingUserId === profile.id;
+
+    return (
+      <div className="rounded-2xl border bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate font-black">{profile.full_name || profile.email}</div>
+            <div className="truncate text-xs font-bold text-slate-500">{profile.email}</div>
           </div>
 
-          {isAdmin ? <button className="btn-primary" onClick={selectNewPerson}>New</button> : null}
+          <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${statusBadgeClass(status)}`}>{status}</span>
         </div>
 
-        <label className="label">Search</label>
-        <input className="input" placeholder="Search personnel..." value={search} onChange={(event) => setSearch(event.target.value)} />
-
-        <div className="mt-4 max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-          {selectedId === "new" ? (
-            <div className="rounded-2xl border-2 border-dashed bg-blue-50 p-3 text-sm font-black text-blue-800">
-              New personnel record
-            </div>
-          ) : null}
-
-          {filteredPersonnel.length === 0 ? (
-            <p className="text-sm text-slate-500">No personnel found.</p>
-          ) : (
-            filteredPersonnel.map((person) => <PersonnelListCard key={person.id} person={person} />)
-          )}
-        </div>
-      </aside>
-
-      <section className="card">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-2xl font-black">{selectedId === "new" ? "New Personnel" : form.full_name || "Personnel Info"}</h2>
-
-          {isAdmin && selectedId !== "new" ? (
-            <button className="btn-danger" disabled={deleting} onClick={deletePersonnel}>
-              {deleting ? "Deleting..." : "Delete"}
-            </button>
-          ) : null}
-        </div>
-
-        {!isAdmin ? (
-          <p className="mt-2 rounded-xl bg-yellow-50 p-3 text-sm font-bold text-yellow-900">
-            View only. Admins can edit personnel.
-          </p>
-        ) : null}
-
-        <label className="label">Full Name</label>
-        <input className="input" disabled={!isAdmin} value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
-
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
           <div>
-            <label className="label">Department</label>
-            <select className="input" disabled={!isAdmin} value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })}>
-              <option value="">Select department</option>
-              {DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}
+            <label className="label">Role</label>
+            <select className="input" value={profile.role || "viewer"} disabled={isSaving} onChange={(event) => saveUserProfile(profile, { role: event.target.value })}>
+              {USER_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="label">Position</label>
-            <input className="input" disabled={!isAdmin} value={form.position} onChange={(event) => setForm({ ...form, position: event.target.value })} />
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label">Email</label>
-            <input className="input" disabled={!isAdmin} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            <label className="label">Status</label>
+            <select className="input" value={status} disabled={isSaving} onChange={(event) => saveUserProfile(profile, { status: event.target.value })}>
+              {USER_STATUSES.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
           </div>
 
           <div>
-            <label className="label">Phone</label>
-            <input className="input" disabled={!isAdmin} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+            <label className="label">Department</label>
+            <select className="input" value={profile.department || ""} disabled={isSaving} onChange={(event) => saveUserProfile(profile, { department: event.target.value || null })}>
+              <option value="">No department</option>
+              {DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}
+            </select>
           </div>
         </div>
 
-        <div className="mt-3 rounded-2xl border bg-slate-50 p-3">
-          <label className="flex items-center gap-2 text-sm font-black">
-            <input type="checkbox" disabled={!isAdmin} checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
-            Active Personnel
-          </label>
-        </div>
-
-        <label className="label">Notes</label>
-        <textarea className="input min-h-28" disabled={!isAdmin} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-
-        {isAdmin ? (
-          <div className="mt-4">
-            <button className="btn-primary" disabled={saving} onClick={savePersonnel}>
-              {saving ? "Saving..." : "Save Personnel"}
+        {status === "pending" ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="btn-primary" disabled={isSaving} onClick={() => saveUserProfile(profile, { status: "active", role: profile.role && profile.role !== "viewer" ? profile.role : "field" })}>
+              Approve
+            </button>
+            <button className="btn-secondary" disabled={isSaving} onClick={() => saveUserProfile(profile, { status: "disabled" })}>
+              Reject / Disable
             </button>
           </div>
         ) : null}
+
+        {isSaving ? <p className="mt-2 text-xs font-bold text-slate-500">Saving...</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <section className="mt-4 space-y-4">
+      {isAdmin ? (
+        <section className="card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-black">User Access & Roles</h2>
+              <p className="mt-1 text-sm font-bold text-slate-500">Approve new signups and control what each user can see.</p>
+            </div>
+
+            <button className="btn-secondary" disabled={loadingUsers} onClick={refreshUserProfiles}>{loadingUsers ? "Refreshing..." : "Refresh Users"}</button>
+          </div>
+
+          {pendingProfiles.length > 0 ? (
+            <div className="mt-3 rounded-2xl bg-yellow-50 p-3 text-sm font-black text-yellow-900">
+              {pendingProfiles.length} account{pendingProfiles.length === 1 ? "" : "s"} pending approval.
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            {userProfiles.length === 0 ? (
+              <p className="text-sm font-bold text-slate-500">{loadingUsers ? "Loading user accounts..." : "No user accounts found."}</p>
+            ) : (
+              userProfiles.map((profile) => <UserAccountCard key={profile.id} profile={profile} />)
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-[420px_1fr]">
+        <aside className="card h-fit lg:sticky lg:top-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-black">Personnel Records</h2>
+              <p className="mt-1 text-xs font-bold text-slate-500">{personnel.length} records</p>
+            </div>
+
+            {isAdmin ? <button className="btn-primary" onClick={selectNewPerson}>New</button> : null}
+          </div>
+
+          <label className="label">Search</label>
+          <input className="input" placeholder="Search personnel..." value={search} onChange={(event) => setSearch(event.target.value)} />
+
+          <div className="mt-4 max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+            {selectedId === "new" ? (
+              <div className="rounded-2xl border-2 border-dashed bg-blue-50 p-3 text-sm font-black text-blue-800">
+                New personnel record
+              </div>
+            ) : null}
+
+            {filteredPersonnel.length === 0 ? (
+              <p className="text-sm text-slate-500">No personnel found.</p>
+            ) : (
+              filteredPersonnel.map((person) => <PersonnelListCard key={person.id} person={person} />)
+            )}
+          </div>
+        </aside>
+
+        <section className="card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-black">{selectedId === "new" ? "New Personnel" : form.full_name || "Personnel Info"}</h2>
+
+            {isAdmin && selectedId !== "new" ? (
+              <button className="btn-danger" disabled={deleting} onClick={deletePersonnel}>
+                {deleting ? "Deactivating..." : "Deactivate"}
+              </button>
+            ) : null}
+          </div>
+
+          {!isAdmin ? (
+            <p className="mt-2 rounded-xl bg-yellow-50 p-3 text-sm font-bold text-yellow-900">
+              View only. Admins can edit personnel.
+            </p>
+          ) : null}
+
+          <label className="label">Full Name</label>
+          <input className="input" disabled={!isAdmin} value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label">Department</label>
+              <select className="input" disabled={!isAdmin} value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })}>
+                <option value="">Select department</option>
+                {DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Position</label>
+              <input className="input" disabled={!isAdmin} value={form.position} onChange={(event) => setForm({ ...form, position: event.target.value })} />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label">Email</label>
+              <input className="input" disabled={!isAdmin} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            </div>
+
+            <div>
+              <label className="label">Phone</label>
+              <input className="input" disabled={!isAdmin} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-2xl border bg-slate-50 p-3">
+            <label className="flex items-center gap-2 text-sm font-black">
+              <input type="checkbox" disabled={!isAdmin} checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
+              Active Personnel
+            </label>
+          </div>
+
+          <label className="label">Notes</label>
+          <textarea className="input min-h-28" disabled={!isAdmin} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+
+          {isAdmin ? (
+            <div className="mt-4">
+              <button className="btn-primary" disabled={saving} onClick={savePersonnel}>
+                {saving ? "Saving..." : "Save Personnel"}
+              </button>
+            </div>
+          ) : null}
+        </section>
       </section>
     </section>
   );
