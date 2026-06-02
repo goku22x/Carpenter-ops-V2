@@ -517,8 +517,8 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   }
 
   function openMaintenanceRequestForm(jobId: string, equipmentId: string) {
-    setWorkOrderJobId(jobId);
-    setWorkOrderType("Maintenance");
+    setQuickRequestJobId(jobId);
+    setQuickRequestType("Maintenance");
     setMaintenanceEquipmentId(equipmentId);
     setWorkOrderForm({
       related_equipment_id: equipmentId
@@ -967,7 +967,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     try {
       const rawPayload = buildRequestPayload(jobId, type);
 
-      const departmentHead = departmentHeadForWorkType(type);
+      const departmentHead = departmentHeadForWorkType(rawPayload.work_type || type);
       const assignedPersonnelId = departmentHead?.id ?? "";
 
       const payload = {
@@ -1746,7 +1746,11 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
             <EmptyBox text="No unassigned equipment." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {unassignedEquipment.map((item) => <EquipmentCard key={item.id} item={item} />)}
+              {unassignedEquipment.map((item) => <EquipmentCard
+                            key={item.id}
+                            item={item}
+                            onMaintenance={(equipmentId) => openMaintenanceRequestForm(job.id, equipmentId)}
+                          />)}
             </div>
           )}
         </section>
