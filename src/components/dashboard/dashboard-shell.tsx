@@ -19,6 +19,26 @@ type Props = {
   initialWorkOrders: WorkOrder[];
 };
 
+function cleanLower(value?: string | null) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function isAdminProfile(profile: Profile) {
+  return ["admin", "manager"].includes(cleanLower(profile.role));
+}
+
+function isDispatcherProfile(profile: Profile) {
+  const role = cleanLower(profile.role);
+  const department = cleanLower(profile.department);
+  return isAdminProfile(profile) || ["dispatcher", "operations", "superintendent"].includes(role) || department.includes("dispatch") || department.includes("equipment") || department.includes("operations");
+}
+
+function isDepartmentWorkProfile(profile: Profile) {
+  const role = cleanLower(profile.role);
+  const department = cleanLower(profile.department);
+  return isAdminProfile(profile) || isDispatcherProfile(profile) || role.includes("lead") || ["maintenance", "survey", "trucking", "office"].some((name) => role.includes(name) || department.includes(name));
+}
+
 export function DashboardShell({ userEmail, profile, initialJobs, initialEquipment, initialPersonnel, initialWorkOrders }: Props) {
   const supabase = createClient();
   const [view, setView] = useState<"calendar" | "jobs" | "personnel" | "equipment" | "work" | "operations">("operations");
@@ -27,6 +47,9 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
   const [personnel, setPersonnel] = useState<Personnel[]>(initialPersonnel);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>(initialWorkOrders);
   const [loggingOut, setLoggingOut] = useState(false);
+  const canAdmin = isAdminProfile(profile);
+  const canDispatch = isDispatcherProfile(profile);
+  const canUseWorkOrders = isDepartmentWorkProfile(profile);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -88,12 +111,18 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
         <div className="flex flex-wrap gap-2">
           <button className={view === "operations" ? "btn-primary" : "btn-secondary"} onClick={() => setView("operations")}>Operations Board</button>
           <button className={view === "calendar" ? "btn-primary" : "btn-secondary"} onClick={() => setView("calendar")}>My Calendar</button>
-          <button className={view === "work" ? "btn-primary" : "btn-secondary"} onClick={() => setView("work")}>Work Orders</button>
-          {profile.role === "admin" ? (
+          {canUseWorkOrders ? (
+            <button className={view === "work" ? "btn-primary" : "btn-secondary"} onClick={() => setView("work")}>Department Work</button>
+          ) : null}
+          {canAdmin ? (
             <button className={view === "jobs" ? "btn-primary" : "btn-secondary"} onClick={() => setView("jobs")}>Job Setup</button>
           ) : null}
-          <button className={view === "personnel" ? "btn-primary" : "btn-secondary"} onClick={() => setView("personnel")}>Personnel</button>
-          <button className={view === "equipment" ? "btn-primary" : "btn-secondary"} onClick={() => setView("equipment")}>Equipment</button>
+          {canAdmin ? (
+            <button className={view === "personnel" ? "btn-primary" : "btn-secondary"} onClick={() => setView("personnel")}>Personnel Admin</button>
+          ) : null}
+          {canDispatch ? (
+            <button className={view === "equipment" ? "btn-primary" : "btn-secondary"} onClick={() => setView("equipment")}>Equipment Dispatch</button>
+          ) : null}
           <button className="btn-secondary" disabled={loggingOut} onClick={handleLogout}>
             {loggingOut ? "Logging out..." : "Logout"}
           </button>
@@ -110,10 +139,10 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
         />
       ) : null}
 
-      {view === "jobs" && profile.role === "admin" ? (
+      {view === "jobs" && canAdmin ? (
         <JobsModule
           initialJobs={jobs}
-          isAdmin={profile.role === "admin"}
+          isAdmin={canAdmin}
           onJobsChanged={async () => {
             await refreshJobs();
             await refreshEquipment();
@@ -121,34 +150,34 @@ export function DashboardShell({ userEmail, profile, initialJobs, initialEquipme
         />
       ) : null}
 
-      {view === "work" ? (
+      {view === "work" && canUseWorkOrders ? (
         <WorkOrdersModule
           workOrders={workOrders}
           jobs={jobs}
           equipment={equipment}
           personnel={personnel}
-          isAdmin={profile.role === "admin"}
+          isAdmin={canAdmin}
           onWorkOrdersChanged={async () => {
             await refreshWorkOrders();
           }}
         />
       ) : null}
 
-      {view === "personnel" ? (
+      {view === "personnel" && canAdmin ? (
         <PersonnelModule
           personnel={personnel}
-          isAdmin={profile.role === "admin"}
+          isAdmin={canAdmin}
           onPersonnelChanged={async () => {
             await refreshPersonnel();
           }}
         />
       ) : null}
 
-      {view === "equipment" ? (
+      {view === "equipment" && canDispatch ? (
         <EquipmentModule
           equipment={equipment}
           jobs={jobs}
-          isAdmin={profile.role === "admin"}
+          isAdmin={canAdmin}
           onEquipmentChanged={async () => {
             await refreshEquipment();
           }}
