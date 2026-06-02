@@ -529,6 +529,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
           job,
           assignedEquipment,
           assignedPersonnel,
+          jobWorkOrders,
           openWorkOrders,
           importantOpenOrders,
           sortedPhases,
@@ -1363,7 +1364,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
       </div>
 
       <div className="grid gap-4">
-        {boardRows.map(({ job, assignedEquipment, assignedPersonnel, openWorkOrders, importantOpenOrders, sortedPhases, assignedToMe }) => {
+        {boardRows.map(({ job, assignedEquipment, assignedPersonnel, jobWorkOrders, openWorkOrders, importantOpenOrders, sortedPhases, assignedToMe }) => {
           const expanded = expandedJobId === job.id;
           const foreman = assignedPersonnel.find((person) => person.position?.toLowerCase().includes("foreman")) ?? assignedPersonnel[0];
 
