@@ -48,6 +48,7 @@ export const workOrderPayloadSchema = z.object({
   work_type: z.enum([
     "Survey",
     "Maintenance",
+    "Equipment Request",
     "Mobilization",
     "Trucking",
     "Foreman Assignment",

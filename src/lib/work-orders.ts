@@ -1,6 +1,7 @@
 export const WORK_ORDER_TYPES = [
   "Survey",
   "Maintenance",
+  "Equipment Request",
   "Mobilization",
   "Trucking",
   "Foreman Assignment",
@@ -30,6 +31,7 @@ export function getWorkOrderTypeColor(type: string | null | undefined) {
       return "bg-blue-100 text-blue-900 border-blue-300";
     case "Maintenance":
       return "bg-red-100 text-red-900 border-red-300";
+    case "Equipment Request":
     case "Mobilization":
       return "bg-purple-100 text-purple-900 border-purple-300";
     case "Trucking":
