@@ -15,6 +15,7 @@ type Props = {
   profile?: Profile;
   onWorkOrdersChanged?: () => Promise<void> | void;
   onJobsChanged?: () => Promise<void> | void;
+  onEquipmentChanged?: () => Promise<void> | void;
 };
 
 type PersonnelWithJob = Personnel & {
@@ -474,7 +475,7 @@ function PhaseMonthCalendar({ phases, assignments = [] }: { phases: PhaseLike[];
   );
 }
 
-export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [], profile, onWorkOrdersChanged, onJobsChanged }: Props) {
+export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [], profile, onWorkOrdersChanged, onJobsChanged, onEquipmentChanged }: Props) {
   const personnelWithJob = personnel as PersonnelWithJob[];
   const currentPerson = getCurrentPerson(profile, personnelWithJob);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
@@ -491,6 +492,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
   const [workOrderUpdateNote, setWorkOrderUpdateNote] = useState("");
   const [workOrderSendBackNote, setWorkOrderSendBackNote] = useState("");
   const [workOrderCompletionEquipmentNumber, setWorkOrderCompletionEquipmentNumber] = useState("");
+  const [workOrderCompletionEquipmentId, setWorkOrderCompletionEquipmentId] = useState("");
   const [workOrderActionSaving, setWorkOrderActionSaving] = useState(false);
 
   const activeJobs = jobs.filter((job) => job.active !== false);
@@ -846,21 +848,34 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
     if (!order) return alert("Work order not found.");
 
     if (order.work_type === "Mobilization") {
-      const equipmentNumber = workOrderCompletionEquipmentNumber.trim();
-      if (!equipmentNumber) return alert("Enter the equipment number before completing this mobilization.");
+      const equipmentId = workOrderCompletionEquipmentId.trim();
+      if (!equipmentId) return alert("Pick the specific equipment unit dispatch is assigning.");
 
-      const nextDescription = appendWorkOrderUpdate(order.description, "Completed", `Equipment #${equipmentNumber}`);
-      setWorkOrderCompletionEquipmentNumber("");
-      setWorkOrderUpdateNote("");
+      try {
+        setWorkOrderActionSaving(true);
+        const response = await fetch(`/api/work-orders/${workOrderId}/assign-equipment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ equipment_id: equipmentId })
+        });
 
-      await patchWorkOrder(workOrderId, {
-        description: nextDescription,
-        status: "Complete",
-        custom_fields: {
-          ...(order.custom_fields ?? {}),
-          completed_equipment_number: equipmentNumber
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || "Equipment assignment failed.");
         }
-      }, "Mobilization completed.");
+
+        setWorkOrderCompletionEquipmentId("");
+        setWorkOrderCompletionEquipmentNumber("");
+        setWorkOrderUpdateNote("");
+        await onWorkOrdersChanged?.();
+        await onEquipmentChanged?.();
+        await onJobsChanged?.();
+        alert("Equipment assigned and mobilization completed.");
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Equipment assignment failed.");
+      } finally {
+        setWorkOrderActionSaving(false);
+      }
       return;
     }
 
@@ -1706,20 +1721,48 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                       </div>
                                     ) : null}
 
-                                    {order.work_type === "Mobilization" && !isComplete ? (
-                                      <div className="rounded-xl border border-green-300 bg-green-50 p-3">
-                                        <label className="label mt-0">Equipment Number to Complete *</label>
-                                        <input
-                                          className="input bg-white text-base"
-                                          placeholder="Example: 315, EX-12, T23"
-                                          value={workOrderCompletionEquipmentNumber}
-                                          onChange={(event) => setWorkOrderCompletionEquipmentNumber(event.target.value)}
-                                        />
-                                        <p className="mt-1 text-xs font-bold text-green-900">
-                                          For mobilizations, enter the equipment number and send it complete.
-                                        </p>
-                                      </div>
-                                    ) : (
+                                    {order.work_type === "Mobilization" && !isComplete ? (() => {
+                                      const fields = (order.custom_fields ?? {}) as Record<string, unknown>;
+                                      const requestedType = String(fields.equipment_type_needed ?? "");
+                                      const availableUnits = equipment
+                                        .filter((item) => {
+                                          const sameType = !requestedType || item.equipment_type === requestedType;
+                                          const notOnAnotherJob = !item.current_job_id || item.current_job_id === order.job_id;
+                                          return sameType && notOnAnotherJob && item.status !== "Archived";
+                                        })
+                                        .sort((a, b) => (a.equipment_number ?? a.name).localeCompare(b.equipment_number ?? b.name));
+
+                                      return (
+                                        <div className="rounded-xl border border-green-300 bg-green-50 p-3">
+                                          <div className="mb-2 rounded-lg bg-white/70 p-2 text-xs font-bold text-green-950">
+                                            Foreman requested: <span className="font-black">{requestedType || "Equipment"}</span>. Dispatch picks the exact unit.
+                                          </div>
+                                          <label className="label mt-0">Dispatch Unit to This Job *</label>
+                                          <select
+                                            className="input bg-white text-base"
+                                            value={workOrderCompletionEquipmentId}
+                                            disabled={workOrderActionSaving}
+                                            onChange={(event) => setWorkOrderCompletionEquipmentId(event.target.value)}
+                                          >
+                                            <option value="">Select available unit</option>
+                                            {availableUnits.map((item) => (
+                                              <option key={item.id} value={item.id}>
+                                                {item.equipment_number ? `#${item.equipment_number} - ` : ""}{item.name}{item.current_job_id === order.job_id ? " (already on this job)" : ""}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          {availableUnits.length === 0 ? (
+                                            <p className="mt-2 text-xs font-bold text-red-700">
+                                              No available {requestedType || "equipment"} units found. Remove one from its current job first or check the equipment type.
+                                            </p>
+                                          ) : (
+                                            <p className="mt-2 text-xs font-bold text-green-900">
+                                              Completing this request assigns the selected unit to this job and records assignment history.
+                                            </p>
+                                          )}
+                                        </div>
+                                      );
+                                    })() : (
                                       <>
                                         <label className="label">Update / Completion Note</label>
                                         <textarea
@@ -1744,7 +1787,7 @@ export function EquipmentBoard({ equipment, jobs, personnel = [], workOrders = [
                                         </button>
                                       ) : (
                                         <button className="btn-primary" disabled={workOrderActionSaving} onClick={() => completeWorkOrder(order.id)}>
-                                          {order.work_type === "Mobilization" ? "Send Complete" : "Mark Complete"}
+                                          {order.work_type === "Mobilization" ? "Assign Unit + Complete" : "Mark Complete"}
                                         </button>
                                       )}
                                     </div>
